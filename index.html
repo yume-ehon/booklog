@@ -9,40 +9,57 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  function showInitError(msg){
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const panel = document.getElementById('debugPanel');
+      if(panel){
+        panel.style.display = 'block';
+        panel.textContent += 'Firebase初期化エラー: ' + msg + '\n';
+      }
+    });
+    if(document.readyState !== 'loading'){
+      const panel = document.getElementById('debugPanel');
+      if(panel){
+        panel.style.display = 'block';
+        panel.textContent += 'Firebase初期化エラー: ' + msg + '\n';
+      }
+    }
+  }
+  try{
+    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+    const { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyBaXJLfFCljN5omZOSy6Nld0cetqj-wXRo",
-    authDomain: "booklog-740ea.firebaseapp.com",
-    projectId: "booklog-740ea",
-    storageBucket: "booklog-740ea.firebasestorage.app",
-    messagingSenderId: "423731234661",
-    appId: "1:423731234661:web:1c1fe611c1ce8e5fb3838c"
-  };
+    const firebaseConfig = {
+      apiKey: "AIzaSyBaXJLfFCljN5omZOSy6Nld0cetqj-wXRo",
+      authDomain: "booklog-740ea.firebaseapp.com",
+      projectId: "booklog-740ea",
+      storageBucket: "booklog-740ea.firebasestorage.app",
+      messagingSenderId: "423731234661",
+      appId: "1:423731234661:web:1c1fe611c1ce8e5fb3838c"
+    };
 
-  const fbApp = initializeApp(firebaseConfig);
-  const db = getFirestore(fbApp);
-  const BOOKS_COLLECTION = "book-entries";
+    const fbApp = initializeApp(firebaseConfig);
+    const db = getFirestore(fbApp);
+    const BOOKS_COLLECTION = "book-entries";
 
-  // Expose a small wrapper matching the app's existing storage-adapter shape,
-  // so the rest of the app doesn't need to know about Firestore directly.
-  window.firebaseBookStorage = {
-    async set(key, value){
-      const id = key.replace(/^book-entry:/, '');
-      await setDoc(doc(db, BOOKS_COLLECTION, id), JSON.parse(value));
-      return {key, value};
-    },
-    async get(key){
-      const id = key.replace(/^book-entry:/, '');
-      const snap = await getDoc(doc(db, BOOKS_COLLECTION, id));
-      if(!snap.exists()) throw new Error('not found');
-      return {key, value: JSON.stringify(snap.data())};
-    },
-    async delete(key){
-      const id = key.replace(/^book-entry:/, '');
-      await deleteDoc(doc(db, BOOKS_COLLECTION, id));
-      return {key, deleted:true};
+    // Expose a small wrapper matching the app's existing storage-adapter shape,
+    // so the rest of the app doesn't need to know about Firestore directly.
+    window.firebaseBookStorage = {
+      async set(key, value){
+        const id = key.replace(/^book-entry:/, '');
+        await setDoc(doc(db, BOOKS_COLLECTION, id), JSON.parse(value));
+        return {key, value};
+      },
+      async get(key){
+        const id = key.replace(/^book-entry:/, '');
+        const snap = await getDoc(doc(db, BOOKS_COLLECTION, id));
+        if(!snap.exists()) throw new Error('not found');
+        return {key, value: JSON.stringify(snap.data())};
+      },
+      async delete(key){
+        const id = key.replace(/^book-entry:/, '');
+        await deleteDoc(doc(db, BOOKS_COLLECTION, id));
+        return {key, deleted:true};
     },
     async list(prefix){
       const snaps = await getDocs(collection(db, BOOKS_COLLECTION));
@@ -51,8 +68,12 @@
       return {keys};
     }
   };
-  window.firebaseReadyFlag = true;
-  window.dispatchEvent(new Event('firebase-ready'));
+    window.firebaseReadyFlag = true;
+    window.dispatchEvent(new Event('firebase-ready'));
+  }catch(err){
+    console.error('Firebase init failed', err);
+    showInitError(err.message || String(err));
+  }
 </script>
 <style>
   :root{
@@ -404,8 +425,22 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="debugPanel" style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;background:#1a1a1a;color:#ff8080;font-family:monospace;font-size:11px;padding:10px;z-index:500;white-space:pre-wrap;"></div>
 
 <script>
+// On-page debug panel (mobile browsers have no dev console visible).
+function logDebug(msg){
+  const panel = document.getElementById('debugPanel');
+  panel.style.display = 'block';
+  panel.textContent += msg + '\n';
+}
+window.addEventListener('error', (e)=>{
+  logDebug('ERROR: ' + e.message);
+});
+window.addEventListener('unhandledrejection', (e)=>{
+  logDebug('PROMISE ERROR: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+});
+
 let html5QrCode = null;
 let currentISBN = "";
 const STORAGE_KEY_PREFIX = "book-entry:";
@@ -594,6 +629,7 @@ async function loadEntries(){
     renderList(entries);
   }catch(e){
     console.error(e);
+    logDebug('loadEntries失敗: ' + e.message);
     listArea.innerHTML = '<div class="empty">読み込みに失敗しました</div>';
   }
 }
@@ -925,6 +961,7 @@ async function migrateLocalToFirebaseIfNeeded(){
     if(migrated > 0) showToast(`${migrated}件をクラウドに移行しました`);
   }catch(e){
     console.error('migration failed', e);
+    logDebug('migration失敗: ' + e.message);
   }
 }
 
