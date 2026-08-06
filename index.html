@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本の記録帳</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#2B3A55;
+    --paper:#F1E9D8;
+    --paper-deep:#E6DAC0;
+    --stamp:#C1443C;
+    --teal:#3F7268;
+    --line:#B8AD8E;
+    --card:#FBF7EE;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px, transparent 1px, transparent 26px),
+      var(--paper);
+    color:var(--ink);
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    min-height:100vh;
+    padding-bottom:60px;
+  }
+  header{
+    padding:28px 20px 18px;
+    text-align:center;
+    border-bottom:2px solid var(--ink);
+    position:relative;
+  }
+  header h1{
+    font-family:'Shippori Mincho', serif;
+    font-size:26px;
+    font-weight:700;
+    margin:0;
+    letter-spacing:0.08em;
+  }
+  header .sub{
+    font-size:11px;
+    letter-spacing:0.25em;
+    color:var(--teal);
+    margin-top:6px;
+    font-weight:500;
+  }
+  .wrap{max-width:520px;margin:0 auto;padding:20px 16px;}
+
+  .scan-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    width:100%;
+    padding:18px;
+    background:var(--ink);
+    color:var(--paper);
+    border:none;
+    border-radius:4px;
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    font-size:16px;
+    font-weight:700;
+    letter-spacing:0.05em;
+    cursor:pointer;
+    box-shadow:3px 3px 0 var(--stamp);
+    transition:transform .12s ease;
+  }
+  .scan-btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--stamp);}
+  .scan-btn svg{width:22px;height:22px;flex-shrink:0;}
+
+  .manual-link{
+    text-align:center;
+    margin-top:12px;
+  }
+  .manual-link button{
+    background:none;border:none;color:var(--teal);
+    font-size:13px;text-decoration:underline;cursor:pointer;
+    font-family:'Zen Kaku Gothic New', sans-serif;
+  }
+
+  .excel-row{
+    display:flex;gap:10px;margin-top:22px;
+  }
+  .excel-btn{
+    flex:1;padding:12px 8px;
+    background:var(--card);
+    border:1px solid var(--ink);
+    border-radius:4px;
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    font-size:13px;font-weight:700;color:var(--ink);
+    cursor:pointer;letter-spacing:0.02em;
+  }
+  .excel-btn.primary{
+    background:var(--teal);color:#fff;border-color:var(--teal);
+  }
+  .excel-btn:disabled{opacity:0.5;cursor:not-allowed;}
+  .excel-hint{
+    font-size:11.5px;color:#8a8468;margin-top:8px;text-align:center;min-height:14px;
+  }
+
+  #reader-modal{
+    position:fixed;inset:0;background:rgba(20,20,15,0.85);
+    display:none;align-items:center;justify-content:center;
+    z-index:100;padding:20px;
+  }
+  #reader-modal.open{display:flex;}
+  .reader-box{
+    background:var(--card);
+    border-radius:6px;
+    padding:16px;
+    width:100%;max-width:440px;
+    position:relative;
+  }
+  .reader-box h3{
+    margin:0 0 12px;font-family:'Shippori Mincho',serif;font-size:16px;
+  }
+  #reader{width:100%;border-radius:4px;overflow:hidden;}
+  .close-x{
+    position:absolute;top:10px;right:14px;
+    background:none;border:none;font-size:22px;
+    color:var(--ink);cursor:pointer;
+  }
+  .reader-hint{font-size:12px;color:#6b6656;margin-top:10px;}
+
+  /* Entry form modal (stamp card style) */
+  #form-modal{
+    position:fixed;inset:0;background:rgba(20,20,15,0.85);
+    display:none;align-items:center;justify-content:center;
+    z-index:100;padding:20px;
+  }
+  #form-modal.open{display:flex;}
+  .stamp-card{
+    background:var(--card);
+    width:100%;max-width:420px;
+    border:1px solid var(--line);
+    border-radius:2px;
+    padding:0;
+    position:relative;
+    box-shadow:6px 6px 0 rgba(43,58,85,0.15);
+  }
+  .stamp-card-head{
+    background:var(--ink);
+    color:var(--paper);
+    padding:14px 20px;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .stamp-card-head span{
+    font-family:'Shippori Mincho',serif;font-size:14px;letter-spacing:0.1em;
+  }
+  .stamp-card-head button{
+    background:none;border:none;color:var(--paper);font-size:20px;cursor:pointer;
+  }
+  .stamp-card-body{padding:20px;}
+  .title-line{
+    font-family:'Zen Maru Gothic', sans-serif;
+    font-size:18px;font-weight:500;
+    padding-bottom:10px;
+    margin-bottom:16px;
+    border-bottom:1.5px dashed var(--line);
+    min-height:24px;
+  }
+  .isbn-tag{
+    font-size:11px;color:var(--teal);letter-spacing:0.05em;margin-top:-12px;margin-bottom:16px;
+  }
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block;font-size:12px;color:var(--teal);margin-bottom:5px;font-weight:500;letter-spacing:0.03em;
+  }
+  .field input{
+    width:100%;padding:10px 12px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    background:#fff;
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    font-size:15px;
+    color:var(--ink);
+  }
+  .field input:focus{outline:2px solid var(--teal);outline-offset:1px;}
+  .save-btn{
+    width:100%;padding:14px;margin-top:6px;
+    background:var(--stamp);color:#fff;border:none;border-radius:3px;
+    font-size:15px;font-weight:700;letter-spacing:0.05em;cursor:pointer;
+  }
+  .save-btn:disabled{opacity:0.5;cursor:not-allowed;}
+  .loading-row{font-size:13px;color:var(--teal);margin-bottom:14px;}
+
+  /* List */
+  .list-head{
+    display:flex;justify-content:space-between;align-items:baseline;
+    margin:32px 0 14px;
+  }
+  .list-head h2{
+    font-family:'Shippori Mincho',serif;font-size:16px;margin:0;letter-spacing:0.05em;
+  }
+  .list-head .count{font-size:12px;color:var(--teal);}
+
+  .entry{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:2px;
+    padding:14px 16px;
+    margin-bottom:12px;
+    position:relative;
+    display:flex;
+    gap:12px;
+  }
+  .entry .stub{
+    width:3px;background:var(--stamp);border-radius:2px;flex-shrink:0;
+  }
+  .entry-main{flex:1;min-width:0;}
+  .entry-title{
+    font-family:'Zen Maru Gothic', sans-serif;
+    font-size:15px;font-weight:500;
+    margin-bottom:8px;
+    word-break:break-word;
+  }
+  .entry-meta{
+    display:flex;flex-wrap:wrap;gap:6px 14px;
+    font-size:12px;color:#5c5847;
+  }
+  .entry-meta b{color:var(--ink);font-weight:700;}
+  .del-btn{
+    background:none;border:none;color:#b0a98f;font-size:16px;cursor:pointer;
+    align-self:flex-start;padding:2px 4px;
+  }
+  .del-btn:hover{color:var(--stamp);}
+
+  .empty{
+    text-align:center;padding:40px 20px;color:#8a8468;font-size:13px;
+    border:1.5px dashed var(--line);border-radius:4px;
+  }
+
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:var(--paper);
+    padding:10px 20px;border-radius:20px;font-size:13px;
+    opacity:0;pointer-events:none;transition:opacity .25s ease;
+    z-index:200;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>本の記録帳</h1>
+  <div class="sub">BOOK PURCHASE LOG</div>
+</header>
+
+<div class="wrap">
+  <button class="scan-btn" id="openScanBtn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="5"/><rect x="16" y="3" width="5" height="5"/><rect x="3" y="16" width="5" height="5"/><line x1="3" y1="12" x2="10" y2="12"/><line x1="14" y1="8" x2="14" y2="16"/><line x1="18" y1="8" x2="18" y2="12"/><line x1="21" y1="12" x2="21" y2="21"/><line x1="14" y1="19" x2="21" y2="19"/></svg>
+    バーコードを読み取る
+  </button>
+  <div class="manual-link"><button id="manualBtn">手入力でISBNを入力する</button></div>
+
+  <div class="excel-row">
+    <button class="excel-btn" id="importBtn">Excelを読み込む</button>
+    <button class="excel-btn primary" id="exportBtn">Excelを書き出す</button>
+  </div>
+  <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none;">
+  <div class="excel-hint" id="importStatus"></div>
+
+  <div class="list-head">
+    <h2>記録した本</h2>
+    <span class="count" id="countLabel">0冊</span>
+  </div>
+  <div id="listArea"></div>
+</div>
+
+<!-- Scanner Modal -->
+<div id="reader-modal">
+  <div class="reader-box">
+    <button class="close-x" id="closeReader">&times;</button>
+    <h3>バーコードをカメラに映してください</h3>
+    <div id="reader"></div>
+    <div class="reader-hint">本の裏表紙のISBNバーコード（978から始まる数字）を枠内に収めてください。</div>
+  </div>
+</div>
+
+<!-- Entry Form Modal -->
+<div id="form-modal">
+  <div class="stamp-card">
+    <div class="stamp-card-head">
+      <span>記録カード</span>
+      <button id="closeForm">&times;</button>
+    </div>
+    <div class="stamp-card-body">
+      <div class="loading-row" id="lookupStatus" style="display:none;">書誌情報を検索中…</div>
+      <div class="title-line" id="titleDisplay">－</div>
+      <div class="isbn-tag" id="isbnDisplay"></div>
+
+      <div class="field">
+        <label for="titleInput">タイトル（自動取得できない場合は入力）</label>
+        <input type="text" id="titleInput" placeholder="タイトルを入力">
+      </div>
+      <div class="field">
+        <label for="authorInput">著者（自動取得できない場合は入力）</label>
+        <input type="text" id="authorInput" placeholder="著者を入力">
+      </div>
+      <div class="field">
+        <label for="dateInput">購入日</label>
+        <input type="date" id="dateInput">
+      </div>
+      <div class="field">
+        <label for="priceInput">価格（円）</label>
+        <input type="number" id="priceInput" placeholder="例：1500">
+      </div>
+      <div class="field">
+        <label for="placeInput">購入場所</label>
+        <input type="text" id="placeInput" placeholder="例：紀伊國屋書店 浦安店">
+      </div>
+      <button class="save-btn" id="saveEntryBtn">記録する</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let html5QrCode = null;
+let currentISBN = "";
+const STORAGE_KEY_PREFIX = "book-entry:";
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+// ---- Scanner ----
+document.getElementById('openScanBtn').addEventListener('click', openScanner);
+document.getElementById('closeReader').addEventListener('click', closeScanner);
+document.getElementById('manualBtn').addEventListener('click', ()=>{
+  const isbn = prompt("ISBNを入力してください（例：9784001157098）");
+  if(isbn && isbn.trim()){
+    openFormWithISBN(isbn.trim());
+  }
+});
+
+function openScanner(){
+  document.getElementById('reader-modal').classList.add('open');
+  html5QrCode = new Html5Qrcode("reader");
+  const config = { fps: 10, qrbox: { width: 260, height: 140 } };
+  html5QrCode.start(
+    { facingMode: "environment" },
+    config,
+    (decodedText) => {
+      onScanSuccess(decodedText);
+    },
+    (errorMessage) => { /* ignore per-frame scan errors */ }
+  ).catch((err)=>{
+    showToast("カメラを起動できませんでした");
+    console.error(err);
+  });
+}
+
+function closeScanner(){
+  document.getElementById('reader-modal').classList.remove('open');
+  if(html5QrCode){
+    html5QrCode.stop().then(()=>html5QrCode.clear()).catch(()=>{});
+  }
+}
+
+function onScanSuccess(text){
+  closeScanner();
+  // Extract digits only, ISBNs are 13 (or 10) digits
+  const digits = text.replace(/[^0-9]/g, "");
+  openFormWithISBN(digits || text);
+}
+
+// ---- Form ----
+function openFormWithISBN(isbn){
+  currentISBN = isbn;
+  document.getElementById('form-modal').classList.add('open');
+  document.getElementById('isbnDisplay').textContent = "ISBN: " + isbn;
+  document.getElementById('titleDisplay').textContent = "検索中…";
+  document.getElementById('titleInput').value = "";
+  document.getElementById('priceInput').value = "";
+  document.getElementById('placeInput').value = "";
+  const today = new Date();
+  document.getElementById('dateInput').value = today.toISOString().slice(0,10);
+  lookupBook(isbn);
+}
+
+document.getElementById('closeForm').addEventListener('click', ()=>{
+  document.getElementById('form-modal').classList.remove('open');
+});
+
+async function lookupBook(isbn){
+  const statusEl = document.getElementById('lookupStatus');
+  statusEl.style.display = 'block';
+  try{
+    const res = await fetch(`https://api.openbd.jp/v1/get?isbn=${encodeURIComponent(isbn)}`);
+    const data = await res.json();
+    if(data && data[0] && data[0].summary && data[0].summary.title){
+      const title = data[0].summary.title;
+      document.getElementById('titleDisplay').textContent = title;
+      document.getElementById('titleInput').value = title;
+      if(data[0].summary.author){
+        document.getElementById('authorInput').value = data[0].summary.author;
+      }
+    } else {
+      document.getElementById('titleDisplay').textContent = "見つかりませんでした";
+      document.getElementById('titleInput').placeholder = "タイトルを手入力してください";
+    }
+  }catch(e){
+    document.getElementById('titleDisplay').textContent = "検索に失敗しました";
+    console.error(e);
+  }finally{
+    statusEl.style.display = 'none';
+  }
+}
+
+document.getElementById('saveEntryBtn').addEventListener('click', saveEntry);
+
+async function saveEntry(){
+  const title = document.getElementById('titleInput').value.trim();
+  const author = document.getElementById('authorInput').value.trim();
+  const date = document.getElementById('dateInput').value;
+  const price = document.getElementById('priceInput').value;
+  const place = document.getElementById('placeInput').value.trim();
+
+  if(!title){
+    showToast("タイトルを入力してください");
+    return;
+  }
+
+  const btn = document.getElementById('saveEntryBtn');
+  btn.disabled = true;
+
+  const entry = {
+    id: 'e_' + Date.now(),
+    isbn: currentISBN,
+    title: title,
+    author: author,
+    date: date,
+    price: price,
+    place: place,
+    source: 'scan',
+    createdAt: new Date().toISOString()
+  };
+
+  try{
+    const result = await window.storage.set(STORAGE_KEY_PREFIX + entry.id, JSON.stringify(entry), false);
+    if(!result){
+      showToast("保存に失敗しました");
+      btn.disabled = false;
+      return;
+    }
+    document.getElementById('form-modal').classList.remove('open');
+    showToast("記録しました");
+    loadEntries();
+  }catch(e){
+    console.error(e);
+    showToast("保存に失敗しました");
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+// ---- List ----
+async function loadEntries(){
+  const listArea = document.getElementById('listArea');
+  const countLabel = document.getElementById('countLabel');
+  try{
+    const listResult = await window.storage.list(STORAGE_KEY_PREFIX, false);
+    const keys = (listResult && listResult.keys) ? listResult.keys : [];
+    if(keys.length === 0){
+      listArea.innerHTML = '<div class="empty">まだ記録がありません。<br>本のバーコードを読み取って登録しましょう。</div>';
+      countLabel.textContent = '0冊';
+      return;
+    }
+    const entries = [];
+    for(const k of keys){
+      try{
+        const r = await window.storage.get(k, false);
+        if(r && r.value){
+          entries.push(JSON.parse(r.value));
+        }
+      }catch(e){ /* skip missing */ }
+    }
+    entries.sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
+    countLabel.textContent = entries.length + '冊';
+    listArea.innerHTML = entries.map(renderEntry).join('');
+
+    entries.forEach(en=>{
+      const delBtn = document.getElementById('del_' + en.id);
+      if(delBtn){
+        delBtn.addEventListener('click', ()=>deleteEntry(en.id));
+      }
+    });
+  }catch(e){
+    console.error(e);
+    listArea.innerHTML = '<div class="empty">読み込みに失敗しました</div>';
+  }
+}
+
+function renderEntry(en){
+  const priceText = en.price ? `¥${Number(en.price).toLocaleString()}` : '－';
+  const dateText = en.date || '－';
+  const placeText = en.place || '－';
+  return `
+  <div class="entry">
+    <div class="stub"></div>
+    <div class="entry-main">
+      <div class="entry-title">${escapeHtml(en.title)}</div>
+      <div class="entry-meta">
+        <span><b>購入日</b> ${escapeHtml(dateText)}</span>
+        <span><b>価格</b> ${escapeHtml(priceText)}</span>
+        <span><b>場所</b> ${escapeHtml(placeText)}</span>
+        ${en.author ? `<span><b>著者</b> ${escapeHtml(en.author)}</span>` : ''}
+      </div>
+    </div>
+    <button class="del-btn" id="del_${en.id}" title="削除">&times;</button>
+  </div>`;
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, (m)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+async function deleteEntry(id){
+  if(!confirm('この記録を削除しますか？')) return;
+  try{
+    const r = await window.storage.get(STORAGE_KEY_PREFIX + id, false);
+    // no version needed for delete per API; just call delete
+    await window.storage.delete(STORAGE_KEY_PREFIX + id, false);
+    showToast("削除しました");
+    loadEntries();
+  }catch(e){
+    console.error(e);
+    showToast("削除に失敗しました");
+  }
+}
+
+// ---- Excel Import ----
+document.getElementById('importBtn').addEventListener('click', ()=>{
+  document.getElementById('fileInput').click();
+});
+document.getElementById('fileInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('importStatus');
+  statusEl.textContent = "読み込み中…";
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+    const monthSheetPattern = /^\d{2}\.\d{2}$/;
+    let imported = 0, skipped = 0;
+
+    // gather existing entries to avoid duplicate import
+    const existing = await getAllEntries();
+    const existingKeySet = new Set(existing.map(en => makeDedupeKey(en.title, en.date, en.price)));
+
+    for(const sheetName of wb.SheetNames){
+      if(!monthSheetPattern.test(sheetName)) continue; // skip summary/other sheets
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      // find header row (contains タイトル)
+      let headerIdx = -1, cols = {};
+      for(let i=0;i<rows.length;i++){
+        const row = rows[i].map(v=>String(v).trim());
+        if(row.some(v=>v.includes('タイトル') || v.includes('書名'))){
+          headerIdx = i;
+          row.forEach((v,j)=>{
+            if(v.includes('タイトル') || v.includes('書名')) cols.title = j;
+            else if(v.includes('著者')) cols.author = j;
+            else if(v.includes('価格') || v.includes('金額')) cols.price = j;
+            else if(v.includes('購入場所') || v.includes('購入店舗')) cols.place = j;
+            else if(v.includes('購入日')) cols.date = j;
+          });
+          break;
+        }
+      }
+      if(headerIdx === -1 || cols.title === undefined) continue;
+
+      const yearMonth = '20' + sheetName; // "23.08" -> "2023.08"
+
+      for(let i=headerIdx+1;i<rows.length;i++){
+        const row = rows[i];
+        const rawTitle = row[cols.title];
+        if(!rawTitle) continue;
+        const title = String(rawTitle).trim();
+        if(!title || title === '合計' || title.includes('タイトル')) continue;
+
+        const author = (cols.author !== undefined && row[cols.author]) ? String(row[cols.author]).trim() : '';
+        let price = (cols.price !== undefined && row[cols.price] !== '') ? row[cols.price] : '';
+        if(typeof price === 'string') price = price.replace(/[^\d.]/g,'');
+        const place = (cols.place !== undefined && row[cols.place]) ? String(row[cols.place]).trim() : '';
+        let date = (cols.date !== undefined && row[cols.date]) ? String(row[cols.date]).trim() : '';
+        date = normalizeDate(date, yearMonth);
+
+        const dedupeKey = makeDedupeKey(title, date, price);
+        if(existingKeySet.has(dedupeKey)){ skipped++; continue; }
+        existingKeySet.add(dedupeKey);
+
+        const entry = {
+          id: 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+          isbn: '',
+          title, author, date, price, place,
+          source: 'imported',
+          createdAt: new Date().toISOString()
+        };
+        try{
+          await window.storage.set(STORAGE_KEY_PREFIX + entry.id, JSON.stringify(entry), false);
+          imported++;
+        }catch(err){ console.error(err); }
+      }
+    }
+    statusEl.textContent = `${imported}件を取り込みました（重複${skipped}件はスキップ）`;
+    loadEntries();
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = "読み込みに失敗しました。ファイル形式をご確認ください。";
+  }finally{
+    e.target.value = '';
+  }
+});
+
+function makeDedupeKey(title, date, price){
+  return `${(title||'').trim()}|${(date||'').trim()}|${(price||'').toString().trim()}`;
+}
+
+function normalizeDate(raw, fallbackYearMonth){
+  if(!raw) return '';
+  // already YYYY-MM-DD or YYYY/MM/DD
+  const m1 = raw.match(/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+  if(m1) return `${m1[1]}-${m1[2].padStart(2,'0')}-${m1[3].padStart(2,'0')}`;
+  // just a day number, combine with sheet's year-month
+  const m2 = raw.match(/^(\d{1,2})$/);
+  if(m2 && fallbackYearMonth){
+    const [y,mo] = fallbackYearMonth.split('.');
+    return `${y}-${mo}-${m2[1].padStart(2,'0')}`;
+  }
+  return raw;
+}
+
+async function getAllEntries(){
+  const listResult = await window.storage.list(STORAGE_KEY_PREFIX, false);
+  const keys = (listResult && listResult.keys) ? listResult.keys : [];
+  const entries = [];
+  for(const k of keys){
+    try{
+      const r = await window.storage.get(k, false);
+      if(r && r.value) entries.push(JSON.parse(r.value));
+    }catch(e){}
+  }
+  return entries;
+}
+
+// ---- Excel Export ----
+document.getElementById('exportBtn').addEventListener('click', exportExcel);
+
+async function exportExcel(){
+  const statusEl = document.getElementById('importStatus');
+  const btn = document.getElementById('exportBtn');
+  btn.disabled = true;
+  statusEl.textContent = "書き出し中…";
+  try{
+    const entries = await getAllEntries();
+    if(entries.length === 0){
+      statusEl.textContent = "記録がまだありません";
+      btn.disabled = false;
+      return;
+    }
+
+    const groups = {}; // "2026.04" -> [entries]
+    const unsorted = [];
+    entries.forEach(en=>{
+      const m = (en.date||'').match(/^(\d{4})-(\d{2})/);
+      if(m){
+        const key = `${m[1]}.${m[2]}`;
+        if(!groups[key]) groups[key] = [];
+        groups[key].push(en);
+      } else {
+        unsorted.push(en);
+      }
+    });
+
+    const wb = XLSX.utils.book_new();
+    const monthKeys = Object.keys(groups).sort();
+    const summaryRows = [['月','冊数','合計金額（円）','平均単価（円）']];
+
+    monthKeys.forEach(key=>{
+      const list = groups[key].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+      const sheetRows = [['番号','タイトル','著者','価格（円）','購入場所','購入日']];
+      let total = 0, priceCount = 0;
+      list.forEach((en,idx)=>{
+        const p = en.price ? Number(en.price) : '';
+        if(p){ total += p; priceCount++; }
+        sheetRows.push([idx+1, en.title||'', en.author||'', p, en.place||'', en.date||'']);
+      });
+      sheetRows.push(['','合計','','' + total,'','']);
+      const ws = XLSX.utils.aoa_to_sheet(sheetRows);
+      ws['!cols'] = [{wch:5},{wch:42},{wch:16},{wch:12},{wch:18},{wch:13}];
+      const tabName = key.slice(2); // "26.04"
+      XLSX.utils.book_append_sheet(wb, ws, tabName);
+      summaryRows.push([key, list.length, total, priceCount ? Math.round(total/priceCount) : 0]);
+    });
+
+    if(unsorted.length){
+      const sheetRows = [['番号','タイトル','著者','価格（円）','購入場所','購入日']];
+      unsorted.forEach((en,idx)=>{
+        sheetRows.push([idx+1, en.title||'', en.author||'', en.price?Number(en.price):'', en.place||'', en.date||'']);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(sheetRows);
+      ws['!cols'] = [{wch:5},{wch:42},{wch:16},{wch:12},{wch:18},{wch:13}];
+      XLSX.utils.book_append_sheet(wb, ws, '日付未入力');
+    }
+
+    const grandTotal = monthKeys.reduce((s,k)=>s+groups[k].reduce((s2,en)=>s2+(en.price?Number(en.price):0),0),0);
+    const grandCount = entries.length;
+    summaryRows.push(['合計', grandCount, grandTotal, '']);
+    const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
+    summaryWs['!cols'] = [{wch:10},{wch:8},{wch:14},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, summaryWs, '月別集計');
+
+    const today = new Date();
+    const yy = String(today.getFullYear()).slice(2);
+    const filename = `絵本リスト_整理済み_${yy}.${today.getMonth()+1}.${String(today.getDate()).padStart(2,'0')}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    statusEl.textContent = "書き出しました：" + filename;
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = "書き出しに失敗しました";
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+loadEntries();
+</script>
+</body>
+</html>
