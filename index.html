@@ -375,7 +375,7 @@
 
   <div class="list-head">
     <h2>記録した本</h2>
-    <span class="count" id="countLabel">0冊</span>
+    <span class="count" id="countLabel">0冊 / 合計¥0</span>
   </div>
   <div class="search-box">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -669,14 +669,13 @@ let allEntriesCache = [];
 
 async function loadEntries(){
   const listArea = document.getElementById('listArea');
-  const countLabel = document.getElementById('countLabel');
   try{
     const entries = await getAllEntries();
     entries.sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
     allEntriesCache = entries;
-    countLabel.textContent = entries.length + '冊';
     populateFilters(entries);
     if(entries.length === 0){
+      updateCountLabel(entries);
       listArea.innerHTML = '<div class="empty">まだ記録がありません。<br>本のバーコードを読み取って登録しましょう。</div>';
       return;
     }
@@ -690,6 +689,7 @@ async function loadEntries(){
 
 function renderList(entries){
   const listArea = document.getElementById('listArea');
+  updateCountLabel(entries);
   if(entries.length === 0){
     listArea.innerHTML = '<div class="search-empty">見つかりませんでした</div>';
     return;
@@ -705,6 +705,12 @@ function renderList(entries){
       titleEl.addEventListener('click', ()=>openDetailModal(en));
     }
   });
+}
+
+function updateCountLabel(entries){
+  const countLabel = document.getElementById('countLabel');
+  const total = entries.reduce((sum, en)=> sum + (en.price ? Number(en.price) : 0), 0);
+  countLabel.textContent = `${entries.length}冊 / 合計¥${total.toLocaleString()}`;
 }
 
 function populateFilters(entries){
