@@ -95,6 +95,7 @@
     font-family:'Zen Kaku Gothic New', sans-serif;
     min-height:100vh;
     padding-bottom:60px;
+    padding-top:26px;
   }
   header{
     padding:28px 20px 18px;
@@ -425,10 +426,17 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="statusBar" style="position:fixed;top:0;left:0;right:0;background:#2B3A55;color:#fff;font-family:monospace;font-size:11px;padding:6px 10px;z-index:501;text-align:center;">状態確認中...</div>
 <div id="debugPanel" style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;background:#1a1a1a;color:#ff8080;font-family:monospace;font-size:11px;padding:10px;z-index:500;white-space:pre-wrap;"></div>
 
 <script>
 // On-page debug panel (mobile browsers have no dev console visible).
+function setStatus(msg){
+  const bar = document.getElementById('statusBar');
+  if(bar) bar.textContent = msg;
+}
+setStatus('起動中... storage=' + (window.storage ? 'artifact' : 'ブラウザ') + ' / firebaseReady=' + !!window.firebaseReadyFlag);
+
 function logDebug(msg){
   const panel = document.getElementById('debugPanel');
   panel.style.display = 'block';
@@ -969,17 +977,33 @@ async function migrateLocalToFirebaseIfNeeded(){
 // switch to Firebase once it's ready so data syncs across devices.
 if(!window.storage){
   if(window.firebaseReadyFlag && window.firebaseBookStorage){
+    setStatus('Firebase: 準備済み → 移行チェック中');
     bookStorage = window.firebaseBookStorage;
-    migrateLocalToFirebaseIfNeeded().then(loadEntries);
+    migrateLocalToFirebaseIfNeeded().then(()=>{ setStatus('Firebase接続中 ✓'); loadEntries(); });
   } else {
+    setStatus('Firebase読み込み待ち中... (10秒待って未接続ならタイムアウトします)');
+    let switched = false;
     window.addEventListener('firebase-ready', ()=>{
+      switched = true;
+      setStatus('Firebase: 準備完了 → 移行チェック中');
       bookStorage = window.firebaseBookStorage;
-      migrateLocalToFirebaseIfNeeded().then(loadEntries);
+      migrateLocalToFirebaseIfNeeded().then(()=>{ setStatus('Firebase接続中 ✓'); loadEntries(); });
     });
+    setTimeout(()=>{
+      if(!switched){
+        setStatus('⚠️ Firebase未接続（ローカル保存のみ動作中）タップで詳細');
+        document.getElementById('statusBar').style.background = '#C1443C';
+        document.getElementById('statusBar').style.cursor = 'pointer';
+        document.getElementById('statusBar').addEventListener('click', ()=>{
+          document.getElementById('debugPanel').style.display = 'block';
+        });
+      }
+    }, 10000);
     // fallback: show local data immediately while waiting, in case Firebase is slow/blocked
     loadEntries();
   }
 } else {
+  setStatus('Claudeアーティファクト内（ローカル保存モード）');
   loadEntries();
 }
 </script>
