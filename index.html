@@ -8,6 +8,52 @@
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBaXJLfFCljN5omZOSy6Nld0cetqj-wXRo",
+    authDomain: "booklog-740ea.firebaseapp.com",
+    projectId: "booklog-740ea",
+    storageBucket: "booklog-740ea.firebasestorage.app",
+    messagingSenderId: "423731234661",
+    appId: "1:423731234661:web:1c1fe611c1ce8e5fb3838c"
+  };
+
+  const fbApp = initializeApp(firebaseConfig);
+  const db = getFirestore(fbApp);
+  const BOOKS_COLLECTION = "book-entries";
+
+  // Expose a small wrapper matching the app's existing storage-adapter shape,
+  // so the rest of the app doesn't need to know about Firestore directly.
+  window.firebaseBookStorage = {
+    async set(key, value){
+      const id = key.replace(/^book-entry:/, '');
+      await setDoc(doc(db, BOOKS_COLLECTION, id), JSON.parse(value));
+      return {key, value};
+    },
+    async get(key){
+      const id = key.replace(/^book-entry:/, '');
+      const snap = await getDoc(doc(db, BOOKS_COLLECTION, id));
+      if(!snap.exists()) throw new Error('not found');
+      return {key, value: JSON.stringify(snap.data())};
+    },
+    async delete(key){
+      const id = key.replace(/^book-entry:/, '');
+      await deleteDoc(doc(db, BOOKS_COLLECTION, id));
+      return {key, deleted:true};
+    },
+    async list(prefix){
+      const snaps = await getDocs(collection(db, BOOKS_COLLECTION));
+      const keys = [];
+      snaps.forEach(d => keys.push('book-entry:' + d.id));
+      return {keys};
+    }
+  };
+  window.firebaseReadyFlag = true;
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
 <style>
   :root{
     --ink:#2B3A55;
@@ -389,7 +435,7 @@ const localBookStorage = {
     return {keys};
   }
 };
-const bookStorage = (window.storage) ? window.storage : localBookStorage;
+let bookStorage = (window.storage) ? window.storage : localBookStorage;
 
 function showToast(msg){
   const t = document.getElementById('toast');
@@ -853,7 +899,23 @@ async function exportExcel(){
   }
 }
 
-loadEntries();
+// If running outside the Claude artifact sandbox (no window.storage),
+// switch to Firebase once it's ready so data syncs across devices.
+if(!window.storage){
+  if(window.firebaseReadyFlag && window.firebaseBookStorage){
+    bookStorage = window.firebaseBookStorage;
+    loadEntries();
+  } else {
+    window.addEventListener('firebase-ready', ()=>{
+      bookStorage = window.firebaseBookStorage;
+      loadEntries();
+    });
+    // fallback: show local data immediately while waiting, in case Firebase is slow/blocked
+    loadEntries();
+  }
+} else {
+  loadEntries();
+}
 </script>
 </body>
 </html>
