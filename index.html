@@ -615,7 +615,7 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
   statusEl.textContent = "読み込み中…";
   try{
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
     const monthSheetPattern = /^\d{2}\.\d{2}$/;
     let imported = 0, skipped = 0;
 
@@ -640,6 +640,7 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
             else if(v.includes('価格') || v.includes('金額')) cols.price = j;
             else if(v.includes('購入場所') || v.includes('購入店舗')) cols.place = j;
             else if(v.includes('購入日')) cols.date = j;
+            else if(v === 'ISBN') cols.isbn = j;
           });
           break;
         }
@@ -659,8 +660,15 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
         let price = (cols.price !== undefined && row[cols.price] !== '') ? row[cols.price] : '';
         if(typeof price === 'string') price = price.replace(/[^\d.]/g,'');
         const place = (cols.place !== undefined && row[cols.place]) ? String(row[cols.place]).trim() : '';
-        let date = (cols.date !== undefined && row[cols.date]) ? String(row[cols.date]).trim() : '';
-        date = normalizeDate(date, yearMonth);
+        const isbn = (cols.isbn !== undefined && row[cols.isbn]) ? String(row[cols.isbn]).trim() : '';
+        let dateRaw = (cols.date !== undefined) ? row[cols.date] : '';
+        let date = '';
+        if(dateRaw instanceof Date && !isNaN(dateRaw)){
+          const y = dateRaw.getFullYear(), mo = String(dateRaw.getMonth()+1).padStart(2,'0'), d = String(dateRaw.getDate()).padStart(2,'0');
+          date = `${y}-${mo}-${d}`;
+        } else if(dateRaw){
+          date = normalizeDate(String(dateRaw).trim(), yearMonth);
+        }
 
         const dedupeKey = makeDedupeKey(title, date, price);
         if(existingKeySet.has(dedupeKey)){ skipped++; continue; }
@@ -668,7 +676,7 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
 
         const entry = {
           id: 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-          isbn: '',
+          isbn,
           title, author, date, price, place,
           source: 'imported',
           createdAt: new Date().toISOString()
