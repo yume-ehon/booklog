@@ -365,6 +365,7 @@
     バーコードを読み取る
   </button>
   <div class="manual-link"><button id="manualBtn">手入力でISBNを入力する</button></div>
+  <div class="manual-link"><button id="fixDatesBtn">日付不明の本を月初日で補完する</button></div>
 
   <div class="excel-row">
     <button class="excel-btn" id="importBtn">Excelを読み込む</button>
@@ -541,6 +542,30 @@ document.getElementById('manualBtn').addEventListener('click', ()=>{
   if(isbn && isbn.trim()){
     openFormWithISBN(isbn.trim());
   }
+});
+
+document.getElementById('fixDatesBtn').addEventListener('click', async ()=>{
+  const statusEl = document.getElementById('importStatus');
+  const targets = allEntriesCache.filter(en => en.sourceSheet && !en.date);
+  if(targets.length === 0){
+    statusEl.textContent = "日付不明の本は見当たりませんでした";
+    return;
+  }
+  if(!confirm(`${targets.length}件、日付が空欄の本があります。その月タブの1日を仮の購入日として補完します。よろしいですか？`)) return;
+  statusEl.textContent = "補完中…";
+  let fixed = 0;
+  for(const en of targets){
+    const m = en.sourceSheet.match(/^(\d{2})\.(\d{2})$/);
+    if(!m) continue;
+    const date = `20${m[1]}-${m[2]}-01`;
+    const updated = { ...en, date, dateIsApprox: true };
+    try{
+      await bookStorage.set(STORAGE_KEY_PREFIX + en.id, JSON.stringify(updated), false);
+      fixed++;
+    }catch(e){ console.error(e); }
+  }
+  statusEl.textContent = `${fixed}件の日付を補完しました`;
+  loadEntries();
 });
 
 function openScanner(){
@@ -877,7 +902,7 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
 
     // gather existing entries to avoid duplicate import
     const existing = await getAllEntries();
-    const existingKeySet = new Set(existing.map(en => makeDedupeKey(en.title, en.date, en.price, en.date ? '' : en.sourceSheet)));
+    const existingKeySet = new Set(existing.map(en => makeDedupeKey(en.title, en.date, en.price, en.dateIsApprox ? en.sourceSheet : '')));
 
     for(const sheetName of wb.SheetNames){
       if(!monthSheetPattern.test(sheetName)) continue; // skip summary/other sheets
@@ -919,14 +944,23 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
         const isbn = (cols.isbn !== undefined && row[cols.isbn]) ? String(row[cols.isbn]).trim() : '';
         let dateRaw = (cols.date !== undefined) ? row[cols.date] : '';
         let date = '';
+        let dateIsApprox = false;
         if(dateRaw instanceof Date && !isNaN(dateRaw)){
           const y = dateRaw.getFullYear(), mo = String(dateRaw.getMonth()+1).padStart(2,'0'), d = String(dateRaw.getDate()).padStart(2,'0');
           date = `${y}-${mo}-${d}`;
         } else if(dateRaw){
           date = normalizeDate(String(dateRaw).trim(), yearMonth);
         }
+        if(!date){
+          // No purchase date recorded (common for monthly subscription
+          // picture books) — fall back to the 1st of the sheet's month so
+          // year/month filtering still works. Marked as approximate.
+          const [y, mo] = yearMonth.split('.');
+          date = `${y}-${mo}-01`;
+          dateIsApprox = true;
+        }
 
-        const dedupeKey = makeDedupeKey(title, date, price, date ? '' : sheetName);
+        const dedupeKey = makeDedupeKey(title, date, price, dateIsApprox ? sheetName : '');
         if(existingKeySet.has(dedupeKey)){ skipped++; continue; }
         existingKeySet.add(dedupeKey);
 
@@ -936,6 +970,7 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
           title, author, date, price, place,
           source: 'imported',
           sourceSheet: sheetName,
+          dateIsApprox,
           createdAt: new Date().toISOString()
         };
         try{
