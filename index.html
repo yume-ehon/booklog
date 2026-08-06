@@ -899,16 +899,45 @@ async function exportExcel(){
   }
 }
 
+// One-time migration: move any books saved locally (from before Firebase
+// was connected) up into Firestore, so nothing gets lost in the switch.
+async function migrateLocalToFirebaseIfNeeded(){
+  const MIGRATION_FLAG = 'book-log-migrated-to-firebase';
+  if(localStorage.getItem(MIGRATION_FLAG)) return;
+  try{
+    const localList = await localBookStorage.list(STORAGE_KEY_PREFIX);
+    const localKeys = (localList && localList.keys) ? localList.keys : [];
+    if(localKeys.length === 0){
+      localStorage.setItem(MIGRATION_FLAG, '1');
+      return;
+    }
+    let migrated = 0;
+    for(const k of localKeys){
+      try{
+        const r = await localBookStorage.get(k);
+        if(r && r.value){
+          await window.firebaseBookStorage.set(k, r.value);
+          migrated++;
+        }
+      }catch(e){ console.error(e); }
+    }
+    localStorage.setItem(MIGRATION_FLAG, '1');
+    if(migrated > 0) showToast(`${migrated}件をクラウドに移行しました`);
+  }catch(e){
+    console.error('migration failed', e);
+  }
+}
+
 // If running outside the Claude artifact sandbox (no window.storage),
 // switch to Firebase once it's ready so data syncs across devices.
 if(!window.storage){
   if(window.firebaseReadyFlag && window.firebaseBookStorage){
     bookStorage = window.firebaseBookStorage;
-    loadEntries();
+    migrateLocalToFirebaseIfNeeded().then(loadEntries);
   } else {
     window.addEventListener('firebase-ready', ()=>{
       bookStorage = window.firebaseBookStorage;
-      loadEntries();
+      migrateLocalToFirebaseIfNeeded().then(loadEntries);
     });
     // fallback: show local data immediately while waiting, in case Firebase is slow/blocked
     loadEntries();
