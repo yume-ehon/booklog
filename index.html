@@ -64,8 +64,18 @@
     async list(prefix){
       const snaps = await getDocs(collection(db, BOOKS_COLLECTION));
       const keys = [];
-      snaps.forEach(d => keys.push('book-entry:' + d.id));
+      window.firebaseBookStorage._cache = window.firebaseBookStorage._cache || {};
+      snaps.forEach(d => {
+        keys.push('book-entry:' + d.id);
+        window.firebaseBookStorage._cache['book-entry:' + d.id] = JSON.stringify(d.data());
+      });
       return {keys};
+    },
+    async getCached(key){
+      if(window.firebaseBookStorage._cache && window.firebaseBookStorage._cache[key]){
+        return {key, value: window.firebaseBookStorage._cache[key]};
+      }
+      return window.firebaseBookStorage.get(key);
     }
   };
     window.firebaseReadyFlag = true;
@@ -854,9 +864,12 @@ async function getAllEntries(){
   const listResult = await bookStorage.list(STORAGE_KEY_PREFIX, false);
   const keys = (listResult && listResult.keys) ? listResult.keys : [];
   const entries = [];
+  // Use the cached copy from list() when available (Firebase) to avoid
+  // re-fetching every document individually — cuts read usage roughly in half.
+  const getFn = bookStorage.getCached ? bookStorage.getCached : bookStorage.get;
   for(const k of keys){
     try{
-      const r = await bookStorage.get(k, false);
+      const r = await getFn(k, false);
       if(r && r.value) entries.push(JSON.parse(r.value));
     }catch(e){}
   }
