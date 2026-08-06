@@ -199,6 +199,25 @@
   }
   .list-head .count{font-size:12px;color:var(--teal);}
 
+  .search-box{
+    position:relative;margin-bottom:16px;
+  }
+  .search-box input{
+    width:100%;padding:11px 14px 11px 38px;
+    border:1px solid var(--line);border-radius:20px;
+    background:var(--card);
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    font-size:14px;color:var(--ink);
+  }
+  .search-box input:focus{outline:2px solid var(--teal);outline-offset:1px;}
+  .search-box svg{
+    position:absolute;left:12px;top:50%;transform:translateY(-50%);
+    width:16px;height:16px;color:var(--teal);pointer-events:none;
+  }
+  .search-empty{
+    text-align:center;padding:24px 20px;color:#8a8468;font-size:13px;
+  }
+
   .entry{
     background:var(--card);
     border:1px solid var(--line);
@@ -269,6 +288,10 @@
   <div class="list-head">
     <h2>記録した本</h2>
     <span class="count" id="countLabel">0冊</span>
+  </div>
+  <div class="search-box">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" id="searchInput" placeholder="タイトル・著者・購入場所で検索">
   </div>
   <div id="listArea"></div>
 </div>
@@ -493,41 +516,55 @@ async function saveEntry(){
 }
 
 // ---- List ----
+let allEntriesCache = [];
+
 async function loadEntries(){
   const listArea = document.getElementById('listArea');
   const countLabel = document.getElementById('countLabel');
   try{
-    const listResult = await bookStorage.list(STORAGE_KEY_PREFIX, false);
-    const keys = (listResult && listResult.keys) ? listResult.keys : [];
-    if(keys.length === 0){
+    const entries = await getAllEntries();
+    entries.sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
+    allEntriesCache = entries;
+    countLabel.textContent = entries.length + '冊';
+    if(entries.length === 0){
       listArea.innerHTML = '<div class="empty">まだ記録がありません。<br>本のバーコードを読み取って登録しましょう。</div>';
-      countLabel.textContent = '0冊';
       return;
     }
-    const entries = [];
-    for(const k of keys){
-      try{
-        const r = await bookStorage.get(k, false);
-        if(r && r.value){
-          entries.push(JSON.parse(r.value));
-        }
-      }catch(e){ /* skip missing */ }
-    }
-    entries.sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
-    countLabel.textContent = entries.length + '冊';
-    listArea.innerHTML = entries.map(renderEntry).join('');
-
-    entries.forEach(en=>{
-      const delBtn = document.getElementById('del_' + en.id);
-      if(delBtn){
-        delBtn.addEventListener('click', ()=>deleteEntry(en.id));
-      }
-    });
+    renderList(entries);
   }catch(e){
     console.error(e);
     listArea.innerHTML = '<div class="empty">読み込みに失敗しました</div>';
   }
 }
+
+function renderList(entries){
+  const listArea = document.getElementById('listArea');
+  if(entries.length === 0){
+    listArea.innerHTML = '<div class="search-empty">見つかりませんでした</div>';
+    return;
+  }
+  listArea.innerHTML = entries.map(renderEntry).join('');
+  entries.forEach(en=>{
+    const delBtn = document.getElementById('del_' + en.id);
+    if(delBtn){
+      delBtn.addEventListener('click', ()=>deleteEntry(en.id));
+    }
+  });
+}
+
+document.getElementById('searchInput').addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toLowerCase();
+  if(!q){
+    renderList(allEntriesCache);
+    return;
+  }
+  const filtered = allEntriesCache.filter(en=>{
+    return (en.title||'').toLowerCase().includes(q)
+      || (en.author||'').toLowerCase().includes(q)
+      || (en.place||'').toLowerCase().includes(q);
+  });
+  renderList(filtered);
+});
 
 function renderEntry(en){
   const priceText = en.price ? `¥${Number(en.price).toLocaleString()}` : '－';
