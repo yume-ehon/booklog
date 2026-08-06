@@ -217,6 +217,16 @@
   .search-empty{
     text-align:center;padding:24px 20px;color:#8a8468;font-size:13px;
   }
+  .filter-row{
+    display:flex;gap:10px;margin-bottom:16px;
+  }
+  .filter-row select{
+    flex:1;padding:9px 10px;
+    border:1px solid var(--line);border-radius:4px;
+    background:var(--card);color:var(--ink);
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    font-size:13px;
+  }
 
   .entry{
     background:var(--card);
@@ -292,6 +302,10 @@
   <div class="search-box">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input type="text" id="searchInput" placeholder="タイトル・著者・購入場所で検索">
+  </div>
+  <div class="filter-row">
+    <select id="yearFilter"><option value="">年（すべて）</option></select>
+    <select id="monthFilter"><option value="">月（すべて）</option></select>
   </div>
   <div id="listArea"></div>
 </div>
@@ -526,6 +540,7 @@ async function loadEntries(){
     entries.sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
     allEntriesCache = entries;
     countLabel.textContent = entries.length + '冊';
+    populateFilters(entries);
     if(entries.length === 0){
       listArea.innerHTML = '<div class="empty">まだ記録がありません。<br>本のバーコードを読み取って登録しましょう。</div>';
       return;
@@ -552,19 +567,49 @@ function renderList(entries){
   });
 }
 
-document.getElementById('searchInput').addEventListener('input', (e)=>{
-  const q = e.target.value.trim().toLowerCase();
-  if(!q){
-    renderList(allEntriesCache);
-    return;
-  }
-  const filtered = allEntriesCache.filter(en=>{
-    return (en.title||'').toLowerCase().includes(q)
-      || (en.author||'').toLowerCase().includes(q)
-      || (en.place||'').toLowerCase().includes(q);
+function populateFilters(entries){
+  const yearSel = document.getElementById('yearFilter');
+  const monthSel = document.getElementById('monthFilter');
+  const prevYear = yearSel.value, prevMonth = monthSel.value;
+  const years = new Set();
+  entries.forEach(en=>{
+    const m = (en.date||'').match(/^(\d{4})-(\d{2})/);
+    if(m) years.add(m[1]);
   });
+  const sortedYears = Array.from(years).sort().reverse();
+  yearSel.innerHTML = '<option value="">年（すべて）</option>' + sortedYears.map(y=>`<option value="${y}">${y}年</option>`).join('');
+  monthSel.innerHTML = '<option value="">月（すべて）</option>' + Array.from({length:12},(_,i)=>i+1).map(m=>`<option value="${String(m).padStart(2,'0')}">${m}月</option>`).join('');
+  if(sortedYears.includes(prevYear)) yearSel.value = prevYear;
+  if(prevMonth) monthSel.value = prevMonth;
+}
+
+function applyFilters(){
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const year = document.getElementById('yearFilter').value;
+  const month = document.getElementById('monthFilter').value;
+  let filtered = allEntriesCache;
+  if(q){
+    filtered = filtered.filter(en=>{
+      return (en.title||'').toLowerCase().includes(q)
+        || (en.author||'').toLowerCase().includes(q)
+        || (en.place||'').toLowerCase().includes(q);
+    });
+  }
+  if(year){
+    filtered = filtered.filter(en=> (en.date||'').startsWith(year + '-'));
+  }
+  if(month){
+    filtered = filtered.filter(en=>{
+      const m = (en.date||'').match(/^\d{4}-(\d{2})/);
+      return m && m[1] === month;
+    });
+  }
   renderList(filtered);
-});
+}
+
+document.getElementById('searchInput').addEventListener('input', applyFilters);
+document.getElementById('yearFilter').addEventListener('change', applyFilters);
+document.getElementById('monthFilter').addEventListener('change', applyFilters);
 
 function renderEntry(en){
   const priceText = en.price ? `¥${Number(en.price).toLocaleString()}` : '－';
