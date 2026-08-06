@@ -327,6 +327,33 @@ let html5QrCode = null;
 let currentISBN = "";
 const STORAGE_KEY_PREFIX = "book-entry:";
 
+// Storage adapter: uses Claude artifact storage if present, otherwise
+// falls back to localStorage so the app works when hosted on GitHub Pages.
+const localBookStorage = {
+  async set(key, value){
+    try{ localStorage.setItem(key, value); return {key, value}; }
+    catch(e){ console.error(e); return null; }
+  },
+  async get(key){
+    const v = localStorage.getItem(key);
+    if(v === null) throw new Error('not found');
+    return {key, value: v};
+  },
+  async delete(key){
+    localStorage.removeItem(key);
+    return {key, deleted:true};
+  },
+  async list(prefix){
+    const keys = [];
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith(prefix)) keys.push(k);
+    }
+    return {keys};
+  }
+};
+const bookStorage = (window.storage) ? window.storage : localBookStorage;
+
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -448,7 +475,7 @@ async function saveEntry(){
   };
 
   try{
-    const result = await window.storage.set(STORAGE_KEY_PREFIX + entry.id, JSON.stringify(entry), false);
+    const result = await bookStorage.set(STORAGE_KEY_PREFIX + entry.id, JSON.stringify(entry), false);
     if(!result){
       showToast("保存に失敗しました");
       btn.disabled = false;
@@ -470,7 +497,7 @@ async function loadEntries(){
   const listArea = document.getElementById('listArea');
   const countLabel = document.getElementById('countLabel');
   try{
-    const listResult = await window.storage.list(STORAGE_KEY_PREFIX, false);
+    const listResult = await bookStorage.list(STORAGE_KEY_PREFIX, false);
     const keys = (listResult && listResult.keys) ? listResult.keys : [];
     if(keys.length === 0){
       listArea.innerHTML = '<div class="empty">まだ記録がありません。<br>本のバーコードを読み取って登録しましょう。</div>';
@@ -480,7 +507,7 @@ async function loadEntries(){
     const entries = [];
     for(const k of keys){
       try{
-        const r = await window.storage.get(k, false);
+        const r = await bookStorage.get(k, false);
         if(r && r.value){
           entries.push(JSON.parse(r.value));
         }
@@ -529,9 +556,9 @@ function escapeHtml(str){
 async function deleteEntry(id){
   if(!confirm('この記録を削除しますか？')) return;
   try{
-    const r = await window.storage.get(STORAGE_KEY_PREFIX + id, false);
+    const r = await bookStorage.get(STORAGE_KEY_PREFIX + id, false);
     // no version needed for delete per API; just call delete
-    await window.storage.delete(STORAGE_KEY_PREFIX + id, false);
+    await bookStorage.delete(STORAGE_KEY_PREFIX + id, false);
     showToast("削除しました");
     loadEntries();
   }catch(e){
@@ -610,7 +637,7 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
           createdAt: new Date().toISOString()
         };
         try{
-          await window.storage.set(STORAGE_KEY_PREFIX + entry.id, JSON.stringify(entry), false);
+          await bookStorage.set(STORAGE_KEY_PREFIX + entry.id, JSON.stringify(entry), false);
           imported++;
         }catch(err){ console.error(err); }
       }
@@ -644,12 +671,12 @@ function normalizeDate(raw, fallbackYearMonth){
 }
 
 async function getAllEntries(){
-  const listResult = await window.storage.list(STORAGE_KEY_PREFIX, false);
+  const listResult = await bookStorage.list(STORAGE_KEY_PREFIX, false);
   const keys = (listResult && listResult.keys) ? listResult.keys : [];
   const entries = [];
   for(const k of keys){
     try{
-      const r = await window.storage.get(k, false);
+      const r = await bookStorage.get(k, false);
       if(r && r.value) entries.push(JSON.parse(r.value));
     }catch(e){}
   }
