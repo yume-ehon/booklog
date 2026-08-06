@@ -877,7 +877,7 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
 
     // gather existing entries to avoid duplicate import
     const existing = await getAllEntries();
-    const existingKeySet = new Set(existing.map(en => makeDedupeKey(en.title, en.date, en.price)));
+    const existingKeySet = new Set(existing.map(en => makeDedupeKey(en.title, en.date, en.price, en.date ? '' : en.sourceSheet)));
 
     for(const sheetName of wb.SheetNames){
       if(!monthSheetPattern.test(sheetName)) continue; // skip summary/other sheets
@@ -926,7 +926,7 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
           date = normalizeDate(String(dateRaw).trim(), yearMonth);
         }
 
-        const dedupeKey = makeDedupeKey(title, date, price);
+        const dedupeKey = makeDedupeKey(title, date, price, date ? '' : sheetName);
         if(existingKeySet.has(dedupeKey)){ skipped++; continue; }
         existingKeySet.add(dedupeKey);
 
@@ -935,6 +935,7 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
           isbn,
           title, author, date, price, place,
           source: 'imported',
+          sourceSheet: sheetName,
           createdAt: new Date().toISOString()
         };
         try{
@@ -953,8 +954,8 @@ document.getElementById('fileInput').addEventListener('change', async (e)=>{
   }
 });
 
-function makeDedupeKey(title, date, price){
-  return `${(title||'').trim()}|${(date||'').trim()}|${(price||'').toString().trim()}`;
+function makeDedupeKey(title, date, price, sheetTag){
+  return `${(title||'').trim()}|${(date||'').trim()}|${(price||'').toString().trim()}|${sheetTag||''}`;
 }
 
 function normalizeDate(raw, fallbackYearMonth){
