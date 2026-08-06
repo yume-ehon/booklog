@@ -206,12 +206,12 @@
   .reader-hint{font-size:12px;color:#6b6656;margin-top:10px;}
 
   /* Entry form modal (stamp card style) */
-  #form-modal{
+  #form-modal, #detail-modal{
     position:fixed;inset:0;background:rgba(20,20,15,0.85);
     display:none;align-items:center;justify-content:center;
     z-index:100;padding:20px;
   }
-  #form-modal.open{display:flex;}
+  #form-modal.open, #detail-modal.open{display:flex;}
   .stamp-card{
     background:var(--card);
     width:100%;max-width:420px;
@@ -431,6 +431,42 @@
         <input type="text" id="placeInput" placeholder="例：紀伊國屋書店 浦安店">
       </div>
       <button class="save-btn" id="saveEntryBtn">記録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail / Edit Modal -->
+<div id="detail-modal">
+  <div class="stamp-card">
+    <div class="stamp-card-head">
+      <span>本の詳細</span>
+      <button id="closeDetail">&times;</button>
+    </div>
+    <div class="stamp-card-body">
+      <div class="isbn-tag" id="detailIsbnDisplay"></div>
+
+      <div class="field">
+        <label for="detailTitleInput">タイトル</label>
+        <input type="text" id="detailTitleInput">
+      </div>
+      <div class="field">
+        <label for="detailAuthorInput">著者</label>
+        <input type="text" id="detailAuthorInput">
+      </div>
+      <div class="field">
+        <label for="detailDateInput">購入日</label>
+        <input type="date" id="detailDateInput">
+      </div>
+      <div class="field">
+        <label for="detailPriceInput">価格（円）</label>
+        <input type="number" id="detailPriceInput">
+      </div>
+      <div class="field">
+        <label for="detailPlaceInput">購入場所</label>
+        <input type="text" id="detailPlaceInput">
+      </div>
+      <button class="save-btn" id="saveDetailBtn">保存する</button>
+      <button class="save-btn" id="deleteDetailBtn" style="background:transparent;color:var(--stamp);border:1px solid var(--stamp);margin-top:8px;">この記録を削除</button>
     </div>
   </div>
 </div>
@@ -664,6 +700,10 @@ function renderList(entries){
     if(delBtn){
       delBtn.addEventListener('click', ()=>deleteEntry(en.id));
     }
+    const titleEl = document.getElementById('title_' + en.id);
+    if(titleEl){
+      titleEl.addEventListener('click', ()=>openDetailModal(en));
+    }
   });
 }
 
@@ -719,7 +759,7 @@ function renderEntry(en){
   <div class="entry">
     <div class="stub"></div>
     <div class="entry-main">
-      <div class="entry-title">${escapeHtml(en.title)}</div>
+      <div class="entry-title" id="title_${en.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);">${escapeHtml(en.title)}</div>
       <div class="entry-meta">
         <span><b>購入日</b> ${escapeHtml(dateText)}</span>
         <span><b>価格</b> ${escapeHtml(priceText)}</span>
@@ -748,6 +788,71 @@ async function deleteEntry(id){
     showToast("削除に失敗しました");
   }
 }
+
+// ---- Detail / Edit Modal ----
+let currentDetailEntry = null;
+
+function openDetailModal(en){
+  currentDetailEntry = en;
+  document.getElementById('detailIsbnDisplay').textContent = en.isbn ? ('ISBN: ' + en.isbn) : '';
+  document.getElementById('detailTitleInput').value = en.title || '';
+  document.getElementById('detailAuthorInput').value = en.author || '';
+  document.getElementById('detailDateInput').value = en.date || '';
+  document.getElementById('detailPriceInput').value = en.price || '';
+  document.getElementById('detailPlaceInput').value = en.place || '';
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+document.getElementById('closeDetail').addEventListener('click', ()=>{
+  document.getElementById('detail-modal').classList.remove('open');
+  currentDetailEntry = null;
+});
+
+document.getElementById('saveDetailBtn').addEventListener('click', async ()=>{
+  if(!currentDetailEntry) return;
+  const title = document.getElementById('detailTitleInput').value.trim();
+  if(!title){
+    showToast("タイトルを入力してください");
+    return;
+  }
+  const btn = document.getElementById('saveDetailBtn');
+  btn.disabled = true;
+  try{
+    const updated = {
+      ...currentDetailEntry,
+      title,
+      author: document.getElementById('detailAuthorInput').value.trim(),
+      date: document.getElementById('detailDateInput').value,
+      price: document.getElementById('detailPriceInput').value,
+      place: document.getElementById('detailPlaceInput').value.trim()
+    };
+    await bookStorage.set(STORAGE_KEY_PREFIX + updated.id, JSON.stringify(updated), false);
+    showToast("更新しました");
+    document.getElementById('detail-modal').classList.remove('open');
+    currentDetailEntry = null;
+    loadEntries();
+  }catch(e){
+    console.error(e);
+    showToast("更新に失敗しました");
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('deleteDetailBtn').addEventListener('click', async ()=>{
+  if(!currentDetailEntry) return;
+  if(!confirm('この記録を削除しますか？')) return;
+  try{
+    await bookStorage.delete(STORAGE_KEY_PREFIX + currentDetailEntry.id, false);
+    showToast("削除しました");
+    document.getElementById('detail-modal').classList.remove('open');
+    currentDetailEntry = null;
+    loadEntries();
+  }catch(e){
+    console.error(e);
+    showToast("削除に失敗しました");
+  }
+});
 
 // ---- Excel Import ----
 document.getElementById('importBtn').addEventListener('click', ()=>{
