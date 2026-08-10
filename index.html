@@ -422,6 +422,9 @@
       <div class="field">
         <label for="dateInput">購入日</label>
         <input type="date" id="dateInput">
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--teal);font-weight:400;">
+          <input type="checkbox" id="dateUnknownCheck" style="width:auto;"> 購入日不明
+        </label>
       </div>
       <div class="field">
         <label for="priceInput">価格（円）</label>
@@ -457,6 +460,9 @@
       <div class="field">
         <label for="detailDateInput">購入日</label>
         <input type="date" id="detailDateInput">
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--teal);font-weight:400;">
+          <input type="checkbox" id="detailDateUnknownCheck" style="width:auto;"> 購入日不明
+        </label>
       </div>
       <div class="field">
         <label for="detailPriceInput">価格（円）</label>
@@ -608,10 +614,16 @@ function openFormWithISBN(isbn){
   document.getElementById('titleInput').value = "";
   document.getElementById('priceInput').value = "";
   document.getElementById('placeInput').value = "";
+  document.getElementById('dateUnknownCheck').checked = false;
+  document.getElementById('dateInput').disabled = false;
   const today = new Date();
   document.getElementById('dateInput').value = today.toISOString().slice(0,10);
   lookupBook(isbn);
 }
+
+document.getElementById('dateUnknownCheck').addEventListener('change', (e)=>{
+  document.getElementById('dateInput').disabled = e.target.checked;
+});
 
 document.getElementById('closeForm').addEventListener('click', ()=>{
   document.getElementById('form-modal').classList.remove('open');
@@ -647,7 +659,8 @@ document.getElementById('saveEntryBtn').addEventListener('click', saveEntry);
 async function saveEntry(){
   const title = document.getElementById('titleInput').value.trim();
   const author = document.getElementById('authorInput').value.trim();
-  const date = document.getElementById('dateInput').value;
+  const dateUnknown = document.getElementById('dateUnknownCheck').checked;
+  const date = dateUnknown ? '' : document.getElementById('dateInput').value;
   const price = document.getElementById('priceInput').value;
   const place = document.getElementById('placeInput').value.trim();
 
@@ -665,6 +678,7 @@ async function saveEntry(){
     title: title,
     author: author,
     date: date,
+    dateUnknown: dateUnknown,
     price: price,
     place: place,
     source: 'scan',
@@ -784,7 +798,7 @@ document.getElementById('monthFilter').addEventListener('change', applyFilters);
 
 function renderEntry(en){
   const priceText = en.price ? `¥${Number(en.price).toLocaleString()}` : '－';
-  const dateText = en.date || '－';
+  const dateText = en.dateUnknown ? '不明' : (en.date || '－');
   const placeText = en.place || '－';
   return `
   <div class="entry">
@@ -828,11 +842,18 @@ function openDetailModal(en){
   document.getElementById('detailIsbnDisplay').textContent = en.isbn ? ('ISBN: ' + en.isbn) : '';
   document.getElementById('detailTitleInput').value = en.title || '';
   document.getElementById('detailAuthorInput').value = en.author || '';
-  document.getElementById('detailDateInput').value = en.date || '';
+  const isUnknown = !!en.dateUnknown;
+  document.getElementById('detailDateInput').value = isUnknown ? '' : (en.date || '');
+  document.getElementById('detailDateUnknownCheck').checked = isUnknown;
+  document.getElementById('detailDateInput').disabled = isUnknown;
   document.getElementById('detailPriceInput').value = en.price || '';
   document.getElementById('detailPlaceInput').value = en.place || '';
   document.getElementById('detail-modal').classList.add('open');
 }
+
+document.getElementById('detailDateUnknownCheck').addEventListener('change', (e)=>{
+  document.getElementById('detailDateInput').disabled = e.target.checked;
+});
 
 document.getElementById('closeDetail').addEventListener('click', ()=>{
   document.getElementById('detail-modal').classList.remove('open');
@@ -849,11 +870,13 @@ document.getElementById('saveDetailBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('saveDetailBtn');
   btn.disabled = true;
   try{
+    const dateUnknown = document.getElementById('detailDateUnknownCheck').checked;
     const updated = {
       ...currentDetailEntry,
       title,
       author: document.getElementById('detailAuthorInput').value.trim(),
-      date: document.getElementById('detailDateInput').value,
+      date: dateUnknown ? '' : document.getElementById('detailDateInput').value,
+      dateUnknown,
       price: document.getElementById('detailPriceInput').value,
       place: document.getElementById('detailPlaceInput').value.trim()
     };
