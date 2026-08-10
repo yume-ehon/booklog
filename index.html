@@ -757,14 +757,18 @@ function populateFilters(entries){
   const monthSel = document.getElementById('monthFilter');
   const prevYear = yearSel.value, prevMonth = monthSel.value;
   const years = new Set();
+  let hasUnknown = false;
   entries.forEach(en=>{
+    if(en.dateUnknown){ hasUnknown = true; return; }
     const m = (en.date||'').match(/^(\d{4})-(\d{2})/);
     if(m) years.add(m[1]);
   });
   const sortedYears = Array.from(years).sort().reverse();
-  yearSel.innerHTML = '<option value="">年（すべて）</option>' + sortedYears.map(y=>`<option value="${y}">${y}年</option>`).join('');
+  yearSel.innerHTML = '<option value="">年（すべて）</option>'
+    + sortedYears.map(y=>`<option value="${y}">${y}年</option>`).join('')
+    + (hasUnknown ? '<option value="unknown">購入日不明</option>' : '');
   monthSel.innerHTML = '<option value="">月（すべて）</option>' + Array.from({length:12},(_,i)=>i+1).map(m=>`<option value="${String(m).padStart(2,'0')}">${m}月</option>`).join('');
-  if(sortedYears.includes(prevYear)) yearSel.value = prevYear;
+  if(prevYear && (sortedYears.includes(prevYear) || prevYear === 'unknown')) yearSel.value = prevYear;
   if(prevMonth) monthSel.value = prevMonth;
 }
 
@@ -780,11 +784,19 @@ function applyFilters(){
         || (en.place||'').toLowerCase().includes(q);
     });
   }
-  if(year){
-    filtered = filtered.filter(en=> (en.date||'').startsWith(year + '-'));
-  }
-  if(month){
+  if(year === 'unknown'){
+    filtered = filtered.filter(en=> en.dateUnknown);
+  } else if(year){
+    filtered = filtered.filter(en=> !en.dateUnknown && (en.date||'').startsWith(year + '-'));
+    if(month){
+      filtered = filtered.filter(en=>{
+        const m = (en.date||'').match(/^\d{4}-(\d{2})/);
+        return m && m[1] === month;
+      });
+    }
+  } else if(month){
     filtered = filtered.filter(en=>{
+      if(en.dateUnknown) return false;
       const m = (en.date||'').match(/^\d{4}-(\d{2})/);
       return m && m[1] === month;
     });
