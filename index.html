@@ -410,6 +410,7 @@
       <div class="loading-row" id="lookupStatus" style="display:none;">書誌情報を検索中…</div>
       <div class="title-line" id="titleDisplay">－</div>
       <div class="isbn-tag" id="isbnDisplay"></div>
+      <div id="dupWarning" style="display:none;background:#FBEAE8;border:1px solid var(--stamp);border-radius:4px;padding:10px 12px;margin-bottom:16px;font-size:12.5px;"></div>
 
       <div class="field">
         <label for="titleInput">タイトル（自動取得できない場合は入力）</label>
@@ -616,6 +617,7 @@ function openFormWithISBN(isbn){
   document.getElementById('placeInput').value = "";
   document.getElementById('dateUnknownCheck').checked = false;
   document.getElementById('dateInput').disabled = false;
+  document.getElementById('dupWarning').style.display = 'none';
   const today = new Date();
   document.getElementById('dateInput').value = today.toISOString().slice(0,10);
   lookupBook(isbn);
@@ -623,6 +625,63 @@ function openFormWithISBN(isbn){
 
 document.getElementById('dateUnknownCheck').addEventListener('change', (e)=>{
   document.getElementById('dateInput').disabled = e.target.checked;
+});
+
+// ---- Duplicate detection (exact ISBN / exact / prefix / suffix / partial title match) ----
+function findDuplicateCandidates(title, isbn){
+  const t = (title || '').trim().toLowerCase();
+  if(!t && !isbn) return [];
+  const rank = { isbn: 0, exact: 1, prefix: 2, suffix: 3, partial: 4 };
+  const labels = { isbn: 'ISBN一致', exact: '完全一致', prefix: '前方一致', suffix: '後方一致', partial: '部分一致' };
+  const best = new Map();
+
+  allEntriesCache.forEach(en=>{
+    let type = null;
+    if(isbn && en.isbn && en.isbn === isbn){
+      type = 'isbn';
+    } else {
+      const et = (en.title || '').trim().toLowerCase();
+      if(!et || !t) return;
+      if(et === t) type = 'exact';
+      else if(et.startsWith(t) || t.startsWith(et)) type = 'prefix';
+      else if(et.endsWith(t) || t.endsWith(et)) type = 'suffix';
+      else if(et.includes(t) || t.includes(et)) type = 'partial';
+    }
+    if(!type) return;
+    const existing = best.get(en.id);
+    if(!existing || rank[type] < rank[existing.type]){
+      best.set(en.id, { entry: en, type });
+    }
+  });
+
+  return Array.from(best.values())
+    .sort((a,b)=> rank[a.type] - rank[b.type])
+    .slice(0, 5)
+    .map(x => ({ ...x, label: labels[x.type] }));
+}
+
+function checkDuplicates(title, isbn){
+  const panel = document.getElementById('dupWarning');
+  const candidates = findDuplicateCandidates(title, isbn);
+  if(candidates.length === 0){
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+  panel.style.display = 'block';
+  panel.innerHTML = '⚠️ 似ている本がすでに登録されています<br>' + candidates.map(c=>{
+    const en = c.entry;
+    const dateText = en.dateUnknown ? '不明' : (en.date || '－');
+    const priceText = en.price ? `¥${Number(en.price).toLocaleString()}` : '－';
+    return `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--stamp);">
+      <b>[${c.label}]</b> ${escapeHtml(en.title)}<br>
+      購入日 ${escapeHtml(dateText)} / 価格 ${escapeHtml(priceText)}
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('titleInput').addEventListener('input', (e)=>{
+  checkDuplicates(e.target.value, currentISBN);
 });
 
 document.getElementById('closeForm').addEventListener('click', ()=>{
@@ -651,6 +710,7 @@ async function lookupBook(isbn){
     console.error(e);
   }finally{
     statusEl.style.display = 'none';
+    checkDuplicates(document.getElementById('titleInput').value, isbn);
   }
 }
 
