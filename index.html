@@ -702,8 +702,13 @@ async function lookupBook(isbn){
         document.getElementById('authorInput').value = data[0].summary.author;
       }
     } else {
-      document.getElementById('titleDisplay').textContent = "見つかりませんでした";
-      document.getElementById('titleInput').placeholder = "タイトルを手入力してください";
+      // Not in the Japanese database — try Google Books as a fallback,
+      // which also covers foreign-language (洋書) titles.
+      const found = await lookupBookGoogleBooks(isbn);
+      if(!found){
+        document.getElementById('titleDisplay').textContent = "見つかりませんでした";
+        document.getElementById('titleInput').placeholder = "タイトルを手入力してください";
+      }
     }
   }catch(e){
     document.getElementById('titleDisplay').textContent = "検索に失敗しました";
@@ -712,6 +717,30 @@ async function lookupBook(isbn){
     statusEl.style.display = 'none';
     checkDuplicates(document.getElementById('titleInput').value, isbn);
   }
+}
+
+// Fallback lookup for foreign-language (洋書) or other books not in
+// Japan's openBD database. Returns true if a title was found.
+async function lookupBookGoogleBooks(isbn){
+  try{
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}`);
+    const data = await res.json();
+    if(data && data.items && data.items.length > 0){
+      const info = data.items[0].volumeInfo || {};
+      if(info.title){
+        const title = info.subtitle ? `${info.title}: ${info.subtitle}` : info.title;
+        document.getElementById('titleDisplay').textContent = title;
+        document.getElementById('titleInput').value = title;
+        if(info.authors && info.authors.length){
+          document.getElementById('authorInput').value = info.authors.join(', ');
+        }
+        return true;
+      }
+    }
+  }catch(e){
+    console.error('Google Books lookup failed', e);
+  }
+  return false;
 }
 
 document.getElementById('saveEntryBtn').addEventListener('click', saveEntry);
