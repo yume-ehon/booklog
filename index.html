@@ -577,8 +577,18 @@ document.getElementById('fixDatesBtn').addEventListener('click', async ()=>{
 
 function openScanner(){
   document.getElementById('reader-modal').classList.add('open');
-  html5QrCode = new Html5Qrcode("reader");
-  const config = { fps: 10, qrbox: { width: 260, height: 140 } };
+  html5QrCode = new Html5Qrcode("reader", {
+    // Limiting to barcode formats (skip QR/other 2D codes) makes
+    // per-frame detection noticeably faster on mobile.
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E
+    ],
+    verbose: false
+  });
+  const config = { fps: 15, qrbox: { width: 280, height: 150 }, disableFlip: true };
   html5QrCode.start(
     { facingMode: "environment" },
     config,
@@ -724,6 +734,10 @@ async function lookupBook(isbn){
 async function lookupBookGoogleBooks(isbn){
   try{
     const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}`);
+    if(!res.ok){
+      logDebug(`Google Books応答エラー: HTTP ${res.status}`);
+      return false;
+    }
     const data = await res.json();
     if(data && data.items && data.items.length > 0){
       const info = data.items[0].volumeInfo || {};
@@ -736,9 +750,12 @@ async function lookupBookGoogleBooks(isbn){
         }
         return true;
       }
+    } else {
+      logDebug(`Google Books: ISBN ${isbn} は見つかりませんでした（totalItems=${data.totalItems ?? '?'}）`);
     }
   }catch(e){
     console.error('Google Books lookup failed', e);
+    logDebug('Google Books通信エラー: ' + e.message);
   }
   return false;
 }
