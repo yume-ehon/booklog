@@ -811,6 +811,25 @@ async function saveEntry(){
 
 // ---- List ----
 let allEntriesCache = [];
+let currentFilteredEntries = [];
+
+function isFilterActive(){
+  return !!(document.getElementById('searchInput').value.trim() || document.getElementById('yearFilter').value || document.getElementById('monthFilter').value);
+}
+
+function clearFilters(){
+  document.getElementById('searchInput').value = '';
+  document.getElementById('yearFilter').value = '';
+  document.getElementById('monthFilter').value = '';
+}
+
+async function refreshCacheThenApplyFilters(){
+  const entries = await getAllEntries();
+  entries.sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
+  allEntriesCache = entries;
+  populateFilters(entries);
+  applyFilters();
+}
 
 async function loadEntries(){
   const listArea = document.getElementById('listArea');
@@ -834,6 +853,7 @@ async function loadEntries(){
 
 function renderList(entries){
   const listArea = document.getElementById('listArea');
+  currentFilteredEntries = entries;
   updateCountLabel(entries);
   if(entries.length === 0){
     listArea.innerHTML = '<div class="search-empty">見つかりませんでした</div>';
@@ -939,12 +959,19 @@ function escapeHtml(str){
 
 async function deleteEntry(id){
   if(!confirm('この記録を削除しますか？')) return;
+  const filterActive = isFilterActive();
+  const wasOnlyOne = currentFilteredEntries.length === 1;
   try{
-    const r = await bookStorage.get(STORAGE_KEY_PREFIX + id, false);
-    // no version needed for delete per API; just call delete
     await bookStorage.delete(STORAGE_KEY_PREFIX + id, false);
     showToast("削除しました");
-    loadEntries();
+    if(filterActive && wasOnlyOne){
+      clearFilters();
+      loadEntries();
+    } else if(filterActive){
+      refreshCacheThenApplyFilters();
+    } else {
+      loadEntries();
+    }
   }catch(e){
     console.error(e);
     showToast("削除に失敗しました");
@@ -1001,7 +1028,13 @@ document.getElementById('saveDetailBtn').addEventListener('click', async ()=>{
     showToast("更新しました");
     document.getElementById('detail-modal').classList.remove('open');
     currentDetailEntry = null;
-    loadEntries();
+    // Editing always keeps the current filter/search state, however many
+    // results it matched.
+    if(isFilterActive()){
+      refreshCacheThenApplyFilters();
+    } else {
+      loadEntries();
+    }
   }catch(e){
     console.error(e);
     showToast("更新に失敗しました");
@@ -1013,12 +1046,21 @@ document.getElementById('saveDetailBtn').addEventListener('click', async ()=>{
 document.getElementById('deleteDetailBtn').addEventListener('click', async ()=>{
   if(!currentDetailEntry) return;
   if(!confirm('この記録を削除しますか？')) return;
+  const filterActive = isFilterActive();
+  const wasOnlyOne = currentFilteredEntries.length === 1;
   try{
     await bookStorage.delete(STORAGE_KEY_PREFIX + currentDetailEntry.id, false);
     showToast("削除しました");
     document.getElementById('detail-modal').classList.remove('open');
     currentDetailEntry = null;
-    loadEntries();
+    if(filterActive && wasOnlyOne){
+      clearFilters();
+      loadEntries();
+    } else if(filterActive){
+      refreshCacheThenApplyFilters();
+    } else {
+      loadEntries();
+    }
   }catch(e){
     console.error(e);
     showToast("削除に失敗しました");
