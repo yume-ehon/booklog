@@ -206,12 +206,23 @@
   .reader-hint{font-size:12px;color:#6b6656;margin-top:10px;}
 
   /* Entry form modal (stamp card style) */
-  #form-modal, #detail-modal{
+  #form-modal, #detail-modal, #title-search-modal{
     position:fixed;inset:0;background:rgba(20,20,15,0.85);
     display:none;align-items:center;justify-content:center;
     z-index:100;padding:20px;
   }
-  #form-modal.open, #detail-modal.open{display:flex;}
+  #form-modal.open, #detail-modal.open, #title-search-modal.open{display:flex;}
+  .title-result-item{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:10px 12px;
+    margin-bottom:8px;
+    cursor:pointer;
+    font-size:13px;
+  }
+  .title-result-item:hover{background:var(--paper-deep);}
+  .title-result-item b{display:block;font-family:'Zen Maru Gothic',sans-serif;font-size:14px;margin-bottom:2px;}
   .stamp-card{
     background:var(--card);
     width:100%;max-width:420px;
@@ -373,6 +384,7 @@
     バーコードを読み取る
   </button>
   <div class="manual-link"><button id="manualBtn">手入力でISBNを入力する</button></div>
+  <div class="manual-link"><button id="titleSearchBtn">タイトルを手入力</button></div>
   <div class="manual-link"><button id="fixDatesBtn">日付不明の本を月初日で補完する</button></div>
 
   <div class="excel-row">
@@ -445,6 +457,25 @@
         <input type="text" id="placeInput" placeholder="例：紀伊國屋書店 浦安店">
       </div>
       <button class="save-btn" id="saveEntryBtn">記録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Title Search Modal -->
+<div id="title-search-modal">
+  <div class="stamp-card">
+    <div class="stamp-card-head">
+      <span>タイトルで検索</span>
+      <button id="closeTitleSearch">&times;</button>
+    </div>
+    <div class="stamp-card-body">
+      <div class="field">
+        <label for="titleSearchInput">タイトル（一部でもOK）</label>
+        <input type="text" id="titleSearchInput" placeholder="例：ぐりとぐら">
+      </div>
+      <button class="save-btn" id="titleSearchGoBtn">検索する</button>
+      <div id="titleSearchStatus" style="font-size:12.5px;color:var(--teal);margin-top:10px;"></div>
+      <div id="titleSearchResults" style="margin-top:10px;"></div>
     </div>
   </div>
 </div>
@@ -560,6 +591,97 @@ document.getElementById('manualBtn').addEventListener('click', ()=>{
   }
 });
 
+// ---- Title search (Google Books) ----
+document.getElementById('titleSearchBtn').addEventListener('click', ()=>{
+  document.getElementById('titleSearchInput').value = '';
+  document.getElementById('titleSearchStatus').textContent = '';
+  document.getElementById('titleSearchResults').innerHTML = '';
+  document.getElementById('title-search-modal').classList.add('open');
+});
+
+document.getElementById('closeTitleSearch').addEventListener('click', ()=>{
+  document.getElementById('title-search-modal').classList.remove('open');
+});
+
+document.getElementById('titleSearchInput').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter') doTitleSearch();
+});
+document.getElementById('titleSearchGoBtn').addEventListener('click', doTitleSearch);
+
+async function doTitleSearch(){
+  const q = document.getElementById('titleSearchInput').value.trim();
+  const statusEl = document.getElementById('titleSearchStatus');
+  const resultsEl = document.getElementById('titleSearchResults');
+  resultsEl.innerHTML = '';
+  if(!q){
+    statusEl.textContent = 'タイトルを入力してください';
+    return;
+  }
+  statusEl.textContent = '検索中…';
+  try{
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + q)}&maxResults=8`);
+    if(!res.ok){
+      statusEl.textContent = `検索に失敗しました（HTTP ${res.status}）`;
+      logDebug('タイトル検索エラー: HTTP ' + res.status);
+      return;
+    }
+    const data = await res.json();
+    const items = (data.items || []).filter(it => it.volumeInfo && it.volumeInfo.title);
+    if(items.length === 0){
+      statusEl.textContent = '見つかりませんでした。ISBN手入力かバーコード読み取りをお試しください。';
+      return;
+    }
+    statusEl.textContent = `${items.length}件見つかりました。選んでください。`;
+    resultsEl.innerHTML = items.map((it, idx)=>{
+      const info = it.volumeInfo;
+      const author = info.authors ? info.authors.join(', ') : '著者不明';
+      const year = info.publishedDate ? info.publishedDate.slice(0,4) : '';
+      return `<div class="title-result-item" id="titleResult_${idx}">
+        <b>${escapeHtml(info.title)}${info.subtitle ? ' — ' + escapeHtml(info.subtitle) : ''}</b>
+        ${escapeHtml(author)}${year ? ' / ' + escapeHtml(year) + '年' : ''}
+      </div>`;
+    }).join('');
+    items.forEach((it, idx)=>{
+      document.getElementById(`titleResult_${idx}`).addEventListener('click', ()=>{
+        selectTitleSearchResult(it);
+      });
+    });
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = '検索に失敗しました';
+    logDebug('タイトル検索通信エラー: ' + e.message);
+  }
+}
+
+function selectTitleSearchResult(item){
+  const info = item.volumeInfo;
+  const title = info.subtitle ? `${info.title}: ${info.subtitle}` : info.title;
+  const author = info.authors ? info.authors.join(', ') : '';
+  const ids = info.industryIdentifiers || [];
+  const isbn13 = ids.find(i => i.type === 'ISBN_13');
+  const isbn10 = ids.find(i => i.type === 'ISBN_10');
+  const isbn = (isbn13 || isbn10) ? (isbn13 || isbn10).identifier : '';
+
+  document.getElementById('title-search-modal').classList.remove('open');
+
+  // Populate the usual record form directly — no need to re-fetch, we
+  // already have the title/author from the search result.
+  currentISBN = isbn;
+  document.getElementById('form-modal').classList.add('open');
+  document.getElementById('isbnDisplay').textContent = isbn ? ('ISBN: ' + isbn) : '（ISBNなし）';
+  document.getElementById('titleDisplay').textContent = title;
+  document.getElementById('titleInput').value = title;
+  document.getElementById('authorInput').value = author;
+  document.getElementById('priceInput').value = '';
+  document.getElementById('placeInput').value = '';
+  document.getElementById('dateUnknownCheck').checked = false;
+  document.getElementById('dateInput').disabled = false;
+  document.getElementById('dupWarning').style.display = 'none';
+  const today = new Date();
+  document.getElementById('dateInput').value = today.toISOString().slice(0,10);
+  checkDuplicates(title, isbn);
+}
+
 document.getElementById('fixDatesBtn').addEventListener('click', async ()=>{
   const statusEl = document.getElementById('importStatus');
   const targets = allEntriesCache.filter(en => en.sourceSheet && !en.date);
@@ -598,16 +720,35 @@ function openScanner(){
     verbose: false
   });
   const config = { fps: 15, qrbox: { width: 280, height: 150 }, disableFlip: true };
+  // Ask for a sharper, close-focus-friendly stream up front instead of the
+  // default wide/general-purpose one — this is what causes the slow
+  // "blurry, then it suddenly focuses" startup on phone cameras.
+  const cameraConstraints = {
+    facingMode: "environment",
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    advanced: [{ focusMode: "continuous" }]
+  };
   html5QrCode.start(
-    { facingMode: "environment" },
+    cameraConstraints,
     config,
     (decodedText) => {
       onScanSuccess(decodedText);
     },
     (errorMessage) => { /* ignore per-frame scan errors */ }
   ).catch((err)=>{
-    showToast("カメラを起動できませんでした");
-    console.error(err);
+    console.error('Camera start with advanced constraints failed, retrying with basic constraints', err);
+    // Some browsers reject unsupported "advanced" constraints outright —
+    // fall back to the simple facingMode request if that happens.
+    html5QrCode.start(
+      { facingMode: "environment" },
+      config,
+      (decodedText) => { onScanSuccess(decodedText); },
+      (errorMessage) => { /* ignore per-frame scan errors */ }
+    ).catch((err2)=>{
+      showToast("カメラを起動できませんでした");
+      console.error(err2);
+    });
   });
 }
 
