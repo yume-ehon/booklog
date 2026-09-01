@@ -706,7 +706,21 @@ document.getElementById('fixDatesBtn').addEventListener('click', async ()=>{
   loadEntries();
 });
 
+// Scanner state machine: idle -> starting -> running -> stopping -> idle.
+// This avoids the "already under transition" error, which happens when
+// start()/stop() are called on the underlying camera before the previous
+// one has actually finished.
+let scannerState = 'idle';
+let scannerCloseRequested = false;
+
 function openScanner(){
+  if(scannerState !== 'idle'){
+    // A start/stop transition is already in progress — ignore rapid
+    // repeat taps rather than starting a second, conflicting camera session.
+    return;
+  }
+  scannerCloseRequested = false;
+  scannerState = 'starting';
   document.getElementById('reader-modal').classList.add('open');
   html5QrCode = new Html5Qrcode("reader", {
     // Limiting to barcode formats (skip QR/other 2D codes) makes
@@ -735,7 +749,15 @@ function openScanner(){
       onScanSuccess(decodedText);
     },
     (errorMessage) => { /* ignore per-frame scan errors */ }
-  ).catch((err)=>{
+  ).then(()=>{
+    scannerState = 'running';
+    // The user tapped close while the camera was still starting up —
+    // finish starting, then immediately stop it as originally requested.
+    if(scannerCloseRequested){
+      closeScanner();
+    }
+  }).catch((err)=>{
+    scannerState = 'idle';
     showToast("カメラを起動できませんでした");
     console.error(err);
     logDebug('カメラ起動エラー: ' + (err.message || err));
@@ -744,9 +766,20 @@ function openScanner(){
 
 function closeScanner(){
   document.getElementById('reader-modal').classList.remove('open');
-  if(html5QrCode){
-    html5QrCode.stop().then(()=>html5QrCode.clear()).catch(()=>{});
+  if(scannerState === 'starting'){
+    // Can't stop yet — the start() transition hasn't resolved. Remember
+    // to stop as soon as it does (handled in openScanner's .then above).
+    scannerCloseRequested = true;
+    return;
   }
+  if(scannerState !== 'running' || !html5QrCode){
+    return;
+  }
+  scannerState = 'stopping';
+  html5QrCode.stop()
+    .then(()=>html5QrCode.clear())
+    .catch(()=>{})
+    .finally(()=>{ scannerState = 'idle'; });
 }
 
 function onScanSuccess(text){
