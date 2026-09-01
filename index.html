@@ -614,9 +614,6 @@ document.getElementById('titleSearchInput').addEventListener('keydown', (e)=>{
 document.getElementById('titleSearchGoBtn').addEventListener('click', doTitleSearch);
 
 let titleSearchAccumulated = [];
-let titleSearchTotalItems = 0;
-let titleSearchStartIndex = 0;
-let titleSearchQuery = '';
 
 async function doTitleSearch(){
   const q = document.getElementById('titleSearchInput').value.trim();
@@ -627,70 +624,53 @@ async function doTitleSearch(){
     statusEl.textContent = 'タイトルを入力してください';
     return;
   }
-  titleSearchAccumulated = [];
-  titleSearchStartIndex = 0;
-  titleSearchQuery = q;
-  await fetchTitleSearchPage();
-}
-
-async function fetchTitleSearchPage(retryCount){
-  retryCount = retryCount || 0;
-  const statusEl = document.getElementById('titleSearchStatus');
-  const resultsEl = document.getElementById('titleSearchResults');
-  statusEl.textContent = titleSearchAccumulated.length > 0 ? '続きを読み込み中…' : '検索中…';
+  statusEl.textContent = '検索中…';
   try{
-    // No field restriction (intitle:/inauthor:) — a plain query matches
-    // both title and author, so one search box covers both cases.
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(titleSearchQuery)}&maxResults=40&startIndex=${titleSearchStartIndex}&key=${GOOGLE_BOOKS_API_KEY}`);
-    if(!res.ok){
-      // 500/503 etc. are usually transient — retry once before giving up.
-      if(res.status >= 500 && retryCount < 1){
-        await new Promise(r => setTimeout(r, 800));
-        return fetchTitleSearchPage(retryCount + 1);
-      }
-      logDebug('タイトル検索エラー: HTTP ' + res.status);
-      if(titleSearchAccumulated.length > 0){
-        // We already have results from earlier pages — keep them visible
-        // and just note that deeper results aren't available right now,
-        // instead of overwriting the list with an error.
-        statusEl.textContent = `${titleSearchAccumulated.length}件表示中（これ以上は今読み込めませんでした）`;
-        renderTitleSearchResults(false);
-      } else {
-        statusEl.textContent = `検索に失敗しました（HTTP ${res.status}）`;
-      }
+    // Search title and author fields separately (rather than a plain
+    // full-text query) so books that merely *mention* the word somewhere
+    // in their description don't get pulled in as noise.
+    const [titleRes, authorRes] = await Promise.all([
+      fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + q)}&maxResults=40&key=${GOOGLE_BOOKS_API_KEY}`),
+      fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('inauthor:' + q)}&maxResults=40&key=${GOOGLE_BOOKS_API_KEY}`)
+    ]);
+
+    if(!titleRes.ok && !authorRes.ok){
+      const status = !titleRes.ok ? titleRes.status : authorRes.status;
+      statusEl.textContent = `検索に失敗しました（HTTP ${status}）`;
+      logDebug('タイトル検索エラー: HTTP ' + status);
       return;
     }
-    const data = await res.json();
-    titleSearchTotalItems = data.totalItems || 0;
-    const newItems = (data.items || []).filter(it => it.volumeInfo && it.volumeInfo.title);
-    titleSearchAccumulated = titleSearchAccumulated.concat(newItems);
 
-    if(titleSearchAccumulated.length === 0){
+    const titleData = titleRes.ok ? await titleRes.json() : { items: [] };
+    const authorData = authorRes.ok ? await authorRes.json() : { items: [] };
+    const combined = [...(titleData.items || []), ...(authorData.items || [])];
+
+    // Dedupe by volume id, since the same book can show up in both searches.
+    const seen = new Map();
+    combined.forEach(it=>{
+      if(it.volumeInfo && it.volumeInfo.title && !seen.has(it.id)){
+        seen.set(it.id, it);
+      }
+    });
+    const items = Array.from(seen.values());
+
+    if(items.length === 0){
       statusEl.textContent = '見つかりませんでした。ISBN手入力かバーコード読み取りをお試しください。';
       return;
     }
-    statusEl.textContent = `${titleSearchAccumulated.length}件表示中（全${titleSearchTotalItems}件中）`;
-    // Google Books' reported totalItems is often far larger than what it
-    // will actually let you page through — if a page comes back with no
-    // new items despite claiming more exist, treat that as the practical end.
-    renderTitleSearchResults(newItems.length > 0);
+    statusEl.textContent = `${items.length}件見つかりました。選んでください。`;
+    titleSearchAccumulated = items;
+    renderTitleSearchResults(false);
   }catch(e){
     console.error(e);
-    if(titleSearchAccumulated.length > 0){
-      statusEl.textContent = `${titleSearchAccumulated.length}件表示中（これ以上は今読み込めませんでした）`;
-      renderTitleSearchResults(false);
-    } else {
-      statusEl.textContent = '検索に失敗しました';
-    }
+    statusEl.textContent = '検索に失敗しました';
     logDebug('タイトル検索通信エラー: ' + e.message);
   }
 }
 
 function renderTitleSearchResults(allowMore){
-  allowMore = allowMore !== false;
   const resultsEl = document.getElementById('titleSearchResults');
   const items = titleSearchAccumulated;
-  const hasMore = allowMore && titleSearchAccumulated.length < titleSearchTotalItems;
   resultsEl.innerHTML = items.map((it, idx)=>{
     const info = it.volumeInfo;
     const author = info.authors ? info.authors.join(', ') : '著者不明';
@@ -699,19 +679,13 @@ function renderTitleSearchResults(allowMore){
       <b>${escapeHtml(info.title)}${info.subtitle ? ' — ' + escapeHtml(info.subtitle) : ''}</b>
       ${escapeHtml(author)}${year ? ' / ' + escapeHtml(year) + '年' : ''}
     </div>`;
-  }).join('') + (hasMore ? `<button class="save-btn" id="titleSearchMoreBtn" style="margin-top:6px;">もっと見る（残り${titleSearchTotalItems - items.length}件）</button>` : '');
+  }).join('');
 
   items.forEach((it, idx)=>{
     document.getElementById(`titleResult_${idx}`).addEventListener('click', ()=>{
       selectTitleSearchResult(it);
     });
   });
-  if(hasMore){
-    document.getElementById('titleSearchMoreBtn').addEventListener('click', ()=>{
-      titleSearchStartIndex = titleSearchAccumulated.length;
-      fetchTitleSearchPage();
-    });
-  }
 }
 
 function selectTitleSearchResult(item){
