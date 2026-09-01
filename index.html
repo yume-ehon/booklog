@@ -613,6 +613,11 @@ document.getElementById('titleSearchInput').addEventListener('keydown', (e)=>{
 });
 document.getElementById('titleSearchGoBtn').addEventListener('click', doTitleSearch);
 
+let titleSearchAccumulated = [];
+let titleSearchTotalItems = 0;
+let titleSearchStartIndex = 0;
+let titleSearchQuery = '';
+
 async function doTitleSearch(){
   const q = document.getElementById('titleSearchInput').value.trim();
   const statusEl = document.getElementById('titleSearchStatus');
@@ -622,41 +627,67 @@ async function doTitleSearch(){
     statusEl.textContent = 'タイトルを入力してください';
     return;
   }
+  titleSearchAccumulated = [];
+  titleSearchStartIndex = 0;
+  titleSearchQuery = q;
+  await fetchTitleSearchPage();
+}
+
+async function fetchTitleSearchPage(){
+  const statusEl = document.getElementById('titleSearchStatus');
+  const resultsEl = document.getElementById('titleSearchResults');
   statusEl.textContent = '検索中…';
   try{
     // No field restriction (intitle:/inauthor:) — a plain query matches
     // both title and author, so one search box covers both cases.
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=40&key=${GOOGLE_BOOKS_API_KEY}`);
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(titleSearchQuery)}&maxResults=40&startIndex=${titleSearchStartIndex}&key=${GOOGLE_BOOKS_API_KEY}`);
     if(!res.ok){
       statusEl.textContent = `検索に失敗しました（HTTP ${res.status}）`;
       logDebug('タイトル検索エラー: HTTP ' + res.status);
       return;
     }
     const data = await res.json();
-    const items = (data.items || []).filter(it => it.volumeInfo && it.volumeInfo.title);
-    if(items.length === 0){
+    titleSearchTotalItems = data.totalItems || 0;
+    const newItems = (data.items || []).filter(it => it.volumeInfo && it.volumeInfo.title);
+    titleSearchAccumulated = titleSearchAccumulated.concat(newItems);
+
+    if(titleSearchAccumulated.length === 0){
       statusEl.textContent = '見つかりませんでした。ISBN手入力かバーコード読み取りをお試しください。';
       return;
     }
-    statusEl.textContent = `${items.length}件見つかりました。選んでください。`;
-    resultsEl.innerHTML = items.map((it, idx)=>{
-      const info = it.volumeInfo;
-      const author = info.authors ? info.authors.join(', ') : '著者不明';
-      const year = info.publishedDate ? info.publishedDate.slice(0,4) : '';
-      return `<div class="title-result-item" id="titleResult_${idx}">
-        <b>${escapeHtml(info.title)}${info.subtitle ? ' — ' + escapeHtml(info.subtitle) : ''}</b>
-        ${escapeHtml(author)}${year ? ' / ' + escapeHtml(year) + '年' : ''}
-      </div>`;
-    }).join('');
-    items.forEach((it, idx)=>{
-      document.getElementById(`titleResult_${idx}`).addEventListener('click', ()=>{
-        selectTitleSearchResult(it);
-      });
-    });
+    statusEl.textContent = `${titleSearchAccumulated.length}件表示中（全${titleSearchTotalItems}件中）`;
+    renderTitleSearchResults();
   }catch(e){
     console.error(e);
     statusEl.textContent = '検索に失敗しました';
     logDebug('タイトル検索通信エラー: ' + e.message);
+  }
+}
+
+function renderTitleSearchResults(){
+  const resultsEl = document.getElementById('titleSearchResults');
+  const items = titleSearchAccumulated;
+  const hasMore = titleSearchAccumulated.length < titleSearchTotalItems;
+  resultsEl.innerHTML = items.map((it, idx)=>{
+    const info = it.volumeInfo;
+    const author = info.authors ? info.authors.join(', ') : '著者不明';
+    const year = info.publishedDate ? info.publishedDate.slice(0,4) : '';
+    return `<div class="title-result-item" id="titleResult_${idx}">
+      <b>${escapeHtml(info.title)}${info.subtitle ? ' — ' + escapeHtml(info.subtitle) : ''}</b>
+      ${escapeHtml(author)}${year ? ' / ' + escapeHtml(year) + '年' : ''}
+    </div>`;
+  }).join('') + (hasMore ? `<button class="save-btn" id="titleSearchMoreBtn" style="margin-top:6px;">もっと見る（残り${titleSearchTotalItems - items.length}件）</button>` : '');
+
+  items.forEach((it, idx)=>{
+    document.getElementById(`titleResult_${idx}`).addEventListener('click', ()=>{
+      selectTitleSearchResult(it);
+    });
+  });
+  if(hasMore){
+    document.getElementById('titleSearchMoreBtn').addEventListener('click', ()=>{
+      titleSearchStartIndex = titleSearchAccumulated.length;
+      fetchTitleSearchPage();
+    });
   }
 }
 
