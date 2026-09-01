@@ -226,17 +226,22 @@
   .stamp-card{
     background:var(--card);
     width:100%;max-width:420px;
+    max-height:85vh;
     border:1px solid var(--line);
     border-radius:2px;
     padding:0;
     position:relative;
     box-shadow:6px 6px 0 rgba(43,58,85,0.15);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
   }
   .stamp-card-head{
     background:var(--ink);
     color:var(--paper);
     padding:14px 20px;
     display:flex;justify-content:space-between;align-items:center;
+    flex-shrink:0;
   }
   .stamp-card-head span{
     font-family:'Shippori Mincho',serif;font-size:14px;letter-spacing:0.1em;
@@ -244,7 +249,7 @@
   .stamp-card-head button{
     background:none;border:none;color:var(--paper);font-size:20px;cursor:pointer;
   }
-  .stamp-card-body{padding:20px;}
+  .stamp-card-body{padding:20px;overflow-y:auto;flex:1;}
   .title-line{
     font-family:'Zen Maru Gothic', sans-serif;
     font-size:18px;font-weight:500;
@@ -619,7 +624,7 @@ async function doTitleSearch(){
   }
   statusEl.textContent = '検索中…';
   try{
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + q)}&maxResults=8&key=${GOOGLE_BOOKS_API_KEY}`);
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + q)}&maxResults=40&key=${GOOGLE_BOOKS_API_KEY}`);
     if(!res.ok){
       statusEl.textContent = `検索に失敗しました（HTTP ${res.status}）`;
       logDebug('タイトル検索エラー: HTTP ' + res.status);
