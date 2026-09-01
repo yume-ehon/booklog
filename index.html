@@ -390,6 +390,7 @@
   </button>
   <div class="manual-link"><button id="manualBtn">手入力でISBNを入力する</button></div>
   <div class="manual-link"><button id="titleSearchBtn">タイトル・著者名で検索</button></div>
+  <div class="manual-link"><button id="blankFormBtn">検索せず、直接入力して記録する</button></div>
   <div class="manual-link"><button id="fixDatesBtn">日付不明の本を月初日で補完する</button></div>
 
   <div class="excel-row">
@@ -716,6 +717,26 @@ function selectTitleSearchResult(item){
   document.getElementById('dateInput').value = today.toISOString().slice(0,10);
   checkDuplicates(title, isbn);
 }
+
+document.getElementById('blankFormBtn').addEventListener('click', ()=>{
+  // Open a completely empty record card — for books that can't be found
+  // by ISBN or by title/author search (e.g. old, obscure, or data-poor
+  // entries), so the person can still type everything in by hand.
+  currentISBN = '';
+  document.getElementById('form-modal').classList.add('open');
+  document.getElementById('isbnDisplay').textContent = '';
+  document.getElementById('titleDisplay').textContent = '手入力';
+  document.getElementById('titleInput').value = '';
+  document.getElementById('titleInput').placeholder = 'タイトルを入力';
+  document.getElementById('authorInput').value = '';
+  document.getElementById('priceInput').value = '';
+  document.getElementById('placeInput').value = '';
+  document.getElementById('dateUnknownCheck').checked = false;
+  document.getElementById('dateInput').disabled = false;
+  document.getElementById('dupWarning').style.display = 'none';
+  const today = new Date();
+  document.getElementById('dateInput').value = today.toISOString().slice(0,10);
+});
 
 document.getElementById('fixDatesBtn').addEventListener('click', async ()=>{
   const statusEl = document.getElementById('importStatus');
