@@ -619,7 +619,7 @@ async function doTitleSearch(){
   }
   statusEl.textContent = '検索中…';
   try{
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + q)}&maxResults=8`);
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + q)}&maxResults=8&key=${GOOGLE_BOOKS_API_KEY}`);
     if(!res.ok){
       statusEl.textContent = `検索に失敗しました（HTTP ${res.status}）`;
       logDebug('タイトル検索エラー: HTTP ' + res.status);
@@ -720,14 +720,13 @@ function openScanner(){
     verbose: false
   });
   const config = { fps: 15, qrbox: { width: 280, height: 150 }, disableFlip: true };
-  // Ask for a sharper, close-focus-friendly stream up front instead of the
-  // default wide/general-purpose one — this is what causes the slow
-  // "blurry, then it suddenly focuses" startup on phone cameras.
+  // Requesting a higher resolution (but without exotic "advanced" focus
+  // constraints, which some mobile browsers reject outright) still helps
+  // the camera settle on a sharp image faster than the bare default.
   const cameraConstraints = {
     facingMode: "environment",
     width: { ideal: 1280 },
-    height: { ideal: 720 },
-    advanced: [{ focusMode: "continuous" }]
+    height: { ideal: 720 }
   };
   html5QrCode.start(
     cameraConstraints,
@@ -737,18 +736,9 @@ function openScanner(){
     },
     (errorMessage) => { /* ignore per-frame scan errors */ }
   ).catch((err)=>{
-    console.error('Camera start with advanced constraints failed, retrying with basic constraints', err);
-    // Some browsers reject unsupported "advanced" constraints outright —
-    // fall back to the simple facingMode request if that happens.
-    html5QrCode.start(
-      { facingMode: "environment" },
-      config,
-      (decodedText) => { onScanSuccess(decodedText); },
-      (errorMessage) => { /* ignore per-frame scan errors */ }
-    ).catch((err2)=>{
-      showToast("カメラを起動できませんでした");
-      console.error(err2);
-    });
+    showToast("カメラを起動できませんでした");
+    console.error(err);
+    logDebug('カメラ起動エラー: ' + (err.message || err));
   });
 }
 
@@ -883,7 +873,7 @@ async function lookupBook(isbn){
 // Japan's openBD database. Returns true if a title was found.
 async function lookupBookGoogleBooks(isbn){
   try{
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}`);
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&key=${GOOGLE_BOOKS_API_KEY}`);
     if(!res.ok){
       logDebug(`Google Books応答エラー: HTTP ${res.status}`);
       return false;
@@ -981,6 +971,8 @@ async function refreshCacheThenApplyFilters(){
   populateFilters(entries);
   applyFilters();
 }
+
+const GOOGLE_BOOKS_API_KEY = 'AIzaSyD1NlHJyW9sYshykSsmrMooIv01u9rBhrU';
 
 async function loadEntries(){
   const listArea = document.getElementById('listArea');
