@@ -733,17 +733,20 @@ function openScanner(){
     ],
     verbose: false
   });
-  const config = { fps: 15, qrbox: { width: 280, height: 150 }, disableFlip: true };
-  // Requesting a higher resolution (but without exotic "advanced" focus
-  // constraints, which some mobile browsers reject outright) still helps
-  // the camera settle on a sharp image faster than the bare default.
-  const cameraConstraints = {
-    facingMode: "environment",
-    width: { ideal: 1280 },
-    height: { ideal: 720 }
+  // Resolution hints belong in videoConstraints here — the first argument
+  // to start() must contain exactly one key (facingMode OR deviceId).
+  const config = {
+    fps: 15,
+    qrbox: { width: 280, height: 150 },
+    disableFlip: true,
+    videoConstraints: {
+      facingMode: "environment",
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    }
   };
   html5QrCode.start(
-    cameraConstraints,
+    { facingMode: "environment" },
     config,
     (decodedText) => {
       onScanSuccess(decodedText);
