@@ -389,7 +389,7 @@
     バーコードを読み取る
   </button>
   <div class="manual-link"><button id="manualBtn">手入力でISBNを入力する</button></div>
-  <div class="manual-link"><button id="titleSearchBtn">タイトルを手入力</button></div>
+  <div class="manual-link"><button id="titleSearchBtn">タイトル・著者名で検索</button></div>
   <div class="manual-link"><button id="fixDatesBtn">日付不明の本を月初日で補完する</button></div>
 
   <div class="excel-row">
@@ -470,13 +470,13 @@
 <div id="title-search-modal">
   <div class="stamp-card">
     <div class="stamp-card-head">
-      <span>タイトルで検索</span>
+      <span>タイトル・著者名で検索</span>
       <button id="closeTitleSearch">&times;</button>
     </div>
     <div class="stamp-card-body">
       <div class="field">
-        <label for="titleSearchInput">タイトル（一部でもOK）</label>
-        <input type="text" id="titleSearchInput" placeholder="例：ぐりとぐら">
+        <label for="titleSearchInput">タイトルまたは著者名（一部でもOK）</label>
+        <input type="text" id="titleSearchInput" placeholder="例：ぐりとぐら、または 谷川俊太郎">
       </div>
       <button class="save-btn" id="titleSearchGoBtn">検索する</button>
       <div id="titleSearchStatus" style="font-size:12.5px;color:var(--teal);margin-top:10px;"></div>
@@ -624,7 +624,9 @@ async function doTitleSearch(){
   }
   statusEl.textContent = '検索中…';
   try{
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + q)}&maxResults=40&key=${GOOGLE_BOOKS_API_KEY}`);
+    // No field restriction (intitle:/inauthor:) — a plain query matches
+    // both title and author, so one search box covers both cases.
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=40&key=${GOOGLE_BOOKS_API_KEY}`);
     if(!res.ok){
       statusEl.textContent = `検索に失敗しました（HTTP ${res.status}）`;
       logDebug('タイトル検索エラー: HTTP ' + res.status);
