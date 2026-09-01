@@ -776,14 +776,31 @@ function closeScanner(){
     return;
   }
   scannerState = 'stopping';
+  stopScannerWithRetry(2);
+}
+
+function stopScannerWithRetry(attemptsLeft){
   html5QrCode.stop()
     .then(()=>html5QrCode.clear())
-    .catch(()=>{})
-    .finally(()=>{ scannerState = 'idle'; });
+    .then(()=>{ scannerState = 'idle'; })
+    .catch((err)=>{
+      // html5-qrcode can throw "already under transition" if stop() is
+      // called while it's still mid-frame internally (most common right
+      // after a successful decode). A short retry almost always succeeds.
+      if(attemptsLeft > 0){
+        setTimeout(()=> stopScannerWithRetry(attemptsLeft - 1), 300);
+      } else {
+        console.error('scanner stop failed after retries', err);
+        scannerState = 'idle';
+      }
+    });
 }
 
 function onScanSuccess(text){
-  closeScanner();
+  // Defer the stop slightly instead of calling it synchronously inside the
+  // decode callback — doing it immediately is what most often triggers the
+  // "already under transition" error inside html5-qrcode.
+  setTimeout(()=> closeScanner(), 80);
   // Extract digits only, ISBNs are 13 (or 10) digits
   const digits = text.replace(/[^0-9]/g, "");
   openFormWithISBN(digits || text);
