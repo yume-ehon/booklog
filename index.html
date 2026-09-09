@@ -462,6 +462,11 @@
         <label for="placeInput">購入場所</label>
         <input type="text" id="placeInput" placeholder="例：紀伊國屋書店 浦安店">
       </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;">
+          <input type="checkbox" id="sakiPickedCheck" style="width:auto;"> 咲が選んだ本
+        </label>
+      </div>
       <button class="save-btn" id="saveEntryBtn">記録する</button>
     </div>
   </div>
@@ -519,6 +524,12 @@
         <label for="detailPlaceInput">購入場所</label>
         <input type="text" id="detailPlaceInput">
       </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;">
+          <input type="checkbox" id="detailSakiPickedCheck" style="width:auto;"> 咲が選んだ本
+        </label>
+      </div>
+      <div id="detailAgeDisplay" style="font-size:12.5px;color:var(--teal);margin-bottom:10px;"></div>
       <button class="save-btn" id="saveDetailBtn">保存する</button>
       <button class="save-btn" id="deleteDetailBtn" style="background:transparent;color:var(--stamp);border:1px solid var(--stamp);margin-top:8px;">この記録を削除</button>
     </div>
@@ -711,6 +722,7 @@ function selectTitleSearchResult(item){
   document.getElementById('priceInput').value = '';
   document.getElementById('placeInput').value = '';
   document.getElementById('dateUnknownCheck').checked = false;
+  document.getElementById('sakiPickedCheck').checked = false;
   document.getElementById('dateInput').disabled = false;
   document.getElementById('dupWarning').style.display = 'none';
   const today = new Date();
@@ -732,6 +744,7 @@ document.getElementById('blankFormBtn').addEventListener('click', ()=>{
   document.getElementById('priceInput').value = '';
   document.getElementById('placeInput').value = '';
   document.getElementById('dateUnknownCheck').checked = false;
+  document.getElementById('sakiPickedCheck').checked = false;
   document.getElementById('dateInput').disabled = false;
   document.getElementById('dupWarning').style.display = 'none';
   const today = new Date();
@@ -875,6 +888,7 @@ function openFormWithISBN(isbn){
   document.getElementById('priceInput').value = "";
   document.getElementById('placeInput').value = "";
   document.getElementById('dateUnknownCheck').checked = false;
+  document.getElementById('sakiPickedCheck').checked = false;
   document.getElementById('dateInput').disabled = false;
   document.getElementById('dupWarning').style.display = 'none';
   const today = new Date();
@@ -1018,6 +1032,7 @@ async function saveEntry(){
   const date = dateUnknown ? '' : document.getElementById('dateInput').value;
   const price = document.getElementById('priceInput').value;
   const place = document.getElementById('placeInput').value.trim();
+  const sakiPicked = document.getElementById('sakiPickedCheck').checked;
 
   if(!title){
     showToast("タイトルを入力してください");
@@ -1036,6 +1051,7 @@ async function saveEntry(){
     dateUnknown: dateUnknown,
     price: price,
     place: place,
+    sakiPicked: sakiPicked,
     source: 'scan',
     createdAt: new Date().toISOString()
   };
@@ -1048,7 +1064,8 @@ async function saveEntry(){
       return;
     }
     document.getElementById('form-modal').classList.remove('open');
-    showToast("記録しました");
+    const age = (!dateUnknown && date) ? calcAgeAt(date) : '';
+    showToast(age ? `記録しました（咲 ${age}）` : "記録しました");
     loadEntries();
   }catch(e){
     console.error(e);
@@ -1082,6 +1099,21 @@ async function refreshCacheThenApplyFilters(){
 }
 
 const GOOGLE_BOOKS_API_KEY = 'AIzaSyAudiKu74HFhcjzzd1IFOnnhe6S5uORgVo';
+
+// 咲's birth date, used to show her age at the time each book was bought.
+const SAKI_BIRTH_DATE = '2021-02-26';
+
+function calcAgeAt(dateStr){
+  if(!dateStr) return '';
+  const birth = new Date(SAKI_BIRTH_DATE + 'T00:00:00');
+  const at = new Date(dateStr + 'T00:00:00');
+  if(isNaN(birth) || isNaN(at) || at < birth) return '';
+  let years = at.getFullYear() - birth.getFullYear();
+  let months = at.getMonth() - birth.getMonth();
+  if(at.getDate() < birth.getDate()) months--;
+  if(months < 0){ years--; months += 12; }
+  return `${years}Y${months}M`;
+}
 
 async function loadEntries(){
   const listArea = document.getElementById('listArea');
@@ -1199,13 +1231,16 @@ function renderEntry(en){
   const priceText = en.price ? `¥${Number(en.price).toLocaleString()}` : '－';
   const dateText = en.dateUnknown ? '不明' : (en.date || '－');
   const placeText = en.place || '－';
+  const age = (!en.dateUnknown && en.date) ? calcAgeAt(en.date) : '';
   return `
   <div class="entry">
     <div class="stub"></div>
     <div class="entry-main">
-      <div class="entry-title" id="title_${en.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);">${escapeHtml(en.title)}</div>
+      <div class="entry-title" id="title_${en.id}" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);">
+        ${en.sakiPicked ? '<span title="咲が選んだ本" style="color:var(--stamp);margin-right:4px;">★咲</span>' : ''}${escapeHtml(en.title)}
+      </div>
       <div class="entry-meta">
-        <span><b>購入日</b> ${escapeHtml(dateText)}</span>
+        <span><b>購入日</b> ${escapeHtml(dateText)}${age ? `（${age}）` : ''}</span>
         <span><b>価格</b> ${escapeHtml(priceText)}</span>
         <span><b>場所</b> ${escapeHtml(placeText)}</span>
         ${en.author ? `<span><b>著者</b> ${escapeHtml(en.author)}</span>` : ''}
@@ -1254,11 +1289,21 @@ function openDetailModal(en){
   document.getElementById('detailDateInput').disabled = isUnknown;
   document.getElementById('detailPriceInput').value = en.price || '';
   document.getElementById('detailPlaceInput').value = en.place || '';
+  document.getElementById('detailSakiPickedCheck').checked = !!en.sakiPicked;
+  const age = (!isUnknown && en.date) ? calcAgeAt(en.date) : '';
+  document.getElementById('detailAgeDisplay').textContent = age ? `咲の年齢：${age}` : '';
   document.getElementById('detail-modal').classList.add('open');
 }
 
 document.getElementById('detailDateUnknownCheck').addEventListener('change', (e)=>{
   document.getElementById('detailDateInput').disabled = e.target.checked;
+  const age = (!e.target.checked && document.getElementById('detailDateInput').value) ? calcAgeAt(document.getElementById('detailDateInput').value) : '';
+  document.getElementById('detailAgeDisplay').textContent = age ? `咲の年齢：${age}` : '';
+});
+
+document.getElementById('detailDateInput').addEventListener('change', (e)=>{
+  const age = e.target.value ? calcAgeAt(e.target.value) : '';
+  document.getElementById('detailAgeDisplay').textContent = age ? `咲の年齢：${age}` : '';
 });
 
 document.getElementById('closeDetail').addEventListener('click', ()=>{
@@ -1284,7 +1329,8 @@ document.getElementById('saveDetailBtn').addEventListener('click', async ()=>{
       date: dateUnknown ? '' : document.getElementById('detailDateInput').value,
       dateUnknown,
       price: document.getElementById('detailPriceInput').value,
-      place: document.getElementById('detailPlaceInput').value.trim()
+      place: document.getElementById('detailPlaceInput').value.trim(),
+      sakiPicked: document.getElementById('detailSakiPickedCheck').checked
     };
     await bookStorage.set(STORAGE_KEY_PREFIX + updated.id, JSON.stringify(updated), false);
     showToast("更新しました");
